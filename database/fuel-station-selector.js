@@ -17,6 +17,20 @@ function flagEnabled(value, defaultWhenNull = true) {
   return normalized === "1" || normalized === "true" || normalized === "t" || normalized === "yes";
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeStationCoords(station) {
+  return {
+    ...station,
+    lat: toNumberOrNull(station?.lat ?? station?.latitude),
+    lng: toNumberOrNull(station?.lng ?? station?.longitude),
+  };
+}
+
 /**
  * Select best fuel station for a worker
  * @param {Object} params - Selection parameters
@@ -53,14 +67,15 @@ async function selectFuelStation(params) {
 
   try {
     // Step 1: Get stations then normalize status flags in JS to support mixed DB types.
-    const allStations = await new Promise((resolve) => {
+    const allStationsRaw = await new Promise((resolve) => {
       db.all(
-        `SELECT *, latitude as lat, longitude as lng FROM fuel_stations`,
+        `SELECT * FROM fuel_stations`,
         (err, rows) => {
           resolve(rows || []);
         }
       );
     });
+    const allStations = allStationsRaw.map(normalizeStationCoords);
     const eligibleStations = allStations.filter(
       (s) => flagEnabled(s.is_open, true) && flagEnabled(s.is_verified, true)
     );
@@ -77,24 +92,37 @@ async function selectFuelStation(params) {
       };
     }
 
-    // Step 2: Calculate distances and sort by proximity
-    const stationsWithDistance = calculateDistances(
-      worker_lat,
-      worker_lng,
-      candidateStations
+    // Step 2: Calculate distances and sort by proximity when coordinates are available.
+    const stationsWithCoords = candidateStations.filter(
+      (s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)
     );
-
-    // Step 3: Filter by max radius
-    const nearbyStations = stationsWithDistance.filter(
-      (s) => s.distance_km <= max_radius_km
+    const stationsWithoutCoords = candidateStations.filter(
+      (s) => !Number.isFinite(s.lat) || !Number.isFinite(s.lng)
     );
+    let nearbyStations = [];
 
-    if (nearbyStations.length === 0) {
-      return {
-        success: false,
-        error: `No fuel stations within ${max_radius_km} km radius`,
-        fallback: null,
-      };
+    if (stationsWithCoords.length > 0) {
+      const stationsWithDistance = calculateDistances(
+        worker_lat,
+        worker_lng,
+        stationsWithCoords
+      );
+      nearbyStations = stationsWithDistance.filter((s) => s.distance_km <= max_radius_km);
+
+      if (nearbyStations.length === 0) {
+        if (stationsWithoutCoords.length > 0) {
+          nearbyStations = stationsWithoutCoords.map((s) => ({ ...s, distance_km: null }));
+        } else {
+          return {
+            success: false,
+            error: `No fuel stations within ${max_radius_km} km radius`,
+            fallback: null,
+          };
+        }
+      }
+    } else {
+      // Legacy fallback: if station coordinates are missing, continue without distance filtering.
+      nearbyStations = candidateStations.map((s) => ({ ...s, distance_km: null }));
     }
 
     // Step 4: Filter by fuel type availability and stock
@@ -136,9 +164,18 @@ async function selectFuelStation(params) {
     if (is_cod) {
       const codSupportingStations = await Promise.all(
         stationsWithFuel.map(async (station) => {
-          const codSupport = flagEnabled(station.cod_supported, true);
+          const codSupport = flagEnabled(
+            station.cod_supported,
+            flagEnabled(station.cod_enabled, true)
+          );
           const trustFlag = flagEnabled(station.platform_trust_flag, true);
-          const balanceOk = station.cod_current_balance < station.cod_balance_limit;
+          const currentBalance = Number.isFinite(Number(station.cod_current_balance))
+            ? Number(station.cod_current_balance)
+            : 0;
+          const balanceLimit = Number.isFinite(Number(station.cod_balance_limit))
+            ? Number(station.cod_balance_limit)
+            : 50000;
+          const balanceOk = currentBalance < balanceLimit;
 
           return {
             ...station,
@@ -161,7 +198,7 @@ async function selectFuelStation(params) {
         return {
           success: true,
           station: codStations[0],
-          selected_criteria: "cod_supported",
+          selected_criteria: stationsWithCoords.length > 0 ? "cod_supported" : "cod_supported_no_geo",
           alternatives: codStations.slice(1, 3),
         };
       }
@@ -172,7 +209,7 @@ async function selectFuelStation(params) {
         return {
           success: true,
           station: stationsWithFuel[0],
-          selected_criteria: "fallback_to_prepaid",
+          selected_criteria: stationsWithCoords.length > 0 ? "fallback_to_prepaid" : "fallback_to_prepaid_no_geo",
           message: "No COD-supporting station nearby. Using prepaid station.",
           cod_fallback: true,
           alternatives: stationsWithFuel.slice(1, 3),
@@ -196,7 +233,7 @@ async function selectFuelStation(params) {
     return {
       success: true,
       station: stationsWithFuel[0],
-      selected_criteria: "nearest_with_stock",
+      selected_criteria: stationsWithCoords.length > 0 ? "nearest_with_stock" : "with_stock_no_geo",
       alternatives: stationsWithFuel.slice(1, 3),
     };
   } catch (err) {
@@ -228,27 +265,33 @@ async function getAlternativeFuelStations(params) {
 
   try {
     const stations = await new Promise((resolve) => {
-      let sql = `SELECT *, latitude as lat, longitude as lng FROM fuel_stations`;
+      let sql = `SELECT * FROM fuel_stations`;
       const params = [];
 
       if (excluded_station_id) {
-        sql += ` AND id != ?`;
+        sql += ` WHERE id != ?`;
         params.push(excluded_station_id);
       }
 
       db.all(sql, params, (err, rows) => {
         resolve(rows || []);
       });
-    });
+    }).then((rows) => rows.map(normalizeStationCoords));
     const eligibleStations = stations.filter(
       (s) => flagEnabled(s.is_open, true) && flagEnabled(s.is_verified, true)
     );
     const candidateStations = eligibleStations.length > 0 ? eligibleStations : stations;
 
+    const stationsWithCoords = candidateStations.filter(
+      (s) => Number.isFinite(s.lat) && Number.isFinite(s.lng)
+    );
+    const baseStations = stationsWithCoords.length > 0
+      ? calculateDistances(worker_lat, worker_lng, stationsWithCoords).filter((s) => s.distance_km <= max_radius_km)
+      : candidateStations.map((s) => ({ ...s, distance_km: null }));
+
     // Filter by distance and get stock info
     const stationsWithInfo = await Promise.all(
-      calculateDistances(worker_lat, worker_lng, candidateStations)
-        .filter((s) => s.distance_km <= max_radius_km)
+      baseStations
         .slice(0, limit)
         .map(async (station) => {
           const stock = await new Promise((resolve) => {
@@ -341,13 +384,19 @@ async function validateFuelStation(params) {
 
     // Check COD support
     if (is_cod) {
-      if (!flagEnabled(station.cod_supported, true)) {
+      if (!flagEnabled(station.cod_supported, flagEnabled(station.cod_enabled, true))) {
         return { valid: false, reason: "cod_not_supported" };
       }
       if (!flagEnabled(station.platform_trust_flag, true)) {
         return { valid: false, reason: "platform_trust_flag_false" };
       }
-      if (station.cod_current_balance >= station.cod_balance_limit) {
+      const currentBalance = Number.isFinite(Number(station.cod_current_balance))
+        ? Number(station.cod_current_balance)
+        : 0;
+      const balanceLimit = Number.isFinite(Number(station.cod_balance_limit))
+        ? Number(station.cod_balance_limit)
+        : 50000;
+      if (currentBalance >= balanceLimit) {
         return { valid: false, reason: "balance_limit_exceeded" };
       }
     }

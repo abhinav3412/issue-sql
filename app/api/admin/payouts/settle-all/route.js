@@ -21,6 +21,18 @@ function toNumber(value, fallback = 0) {
     return Number.isFinite(n) ? n : fallback;
 }
 
+async function ensureWorkerPayoutColumns(db) {
+    const columns = [
+        "pending_balance REAL DEFAULT 0",
+        "last_payout_at DATETIME",
+    ];
+    for (const col of columns) {
+        await new Promise((resolve) => {
+            db.run(`ALTER TABLE workers ADD COLUMN ${col}`, () => resolve());
+        });
+    }
+}
+
 export async function POST(request) {
     const auth = requireAdmin(request);
     if (!auth) return errorResponse("Unauthorized", 401);
@@ -67,6 +79,7 @@ export async function POST(request) {
                 FOREIGN KEY (worker_id) REFERENCES workers(id)
             )`, () => resolve());
         });
+        await ensureWorkerPayoutColumns(db);
 
         // 1. Fetch eligible workers
         const eligibleWorkers = await new Promise((resolve, reject) => {

@@ -10,6 +10,7 @@ async function ensureFuelStationAdminColumns(db) {
     "is_verified INTEGER DEFAULT 0",
     "is_open INTEGER DEFAULT 1",
     "cod_enabled INTEGER DEFAULT 1",
+    "cod_supported INTEGER DEFAULT 1",
     "cod_balance_limit INTEGER DEFAULT 50000",
     "platform_trust_flag INTEGER DEFAULT 0",
   ];
@@ -167,6 +168,12 @@ export async function PATCH(request, props) {
         filteredUpdates.push(updates[i]);
         filteredValues.push(values[i]);
       }
+    }
+
+    // Keep both COD flags in sync for mixed legacy/new flows.
+    if (Object.prototype.hasOwnProperty.call(otherUpdates, "cod_enabled") && stationCols.has("cod_supported")) {
+      filteredUpdates.push("cod_supported = ?");
+      filteredValues.push(otherUpdates.cod_enabled ? 1 : 0);
     }
 
     const canUpdateUpdatedAt = stationCols.has("updated_at");

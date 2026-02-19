@@ -322,6 +322,10 @@ export async function PATCH(request) {
     if (cod_enabled !== undefined) {
       updates.push("cod_enabled = ?");
       values.push(cod_enabled ? 1 : 0);
+      if (await hasTableColumn(db, "fuel_stations", "cod_supported")) {
+        updates.push("cod_supported = ?");
+        values.push(cod_enabled ? 1 : 0);
+      }
     }
 
     if (cod_balance_limit !== undefined) {

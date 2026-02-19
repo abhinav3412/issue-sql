@@ -42,6 +42,7 @@ export async function GET(request) {
     }
 
     const db = getDB();
+    const hasRunningBalance = await hasColumn(db, "fuel_station_ledger", "running_balance");
 
     const resolvedStationId = await resolveStationId(db, fuel_station_id);
     if (!resolvedStationId) {
@@ -101,7 +102,7 @@ export async function GET(request) {
       db.all(
         `SELECT 
           id, transaction_type, amount, description, status,
-          running_balance, reference_id, created_at, updated_at
+          ${hasRunningBalance ? "running_balance" : "NULL as running_balance"}, reference_id, created_at, updated_at
          FROM fuel_station_ledger
          WHERE fuel_station_id = ?
          ORDER BY created_at DESC

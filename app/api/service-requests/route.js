@@ -219,8 +219,12 @@ function ensureCodSettingsTable(db) {
 
 function ensureFuelStationCodColumns(db) {
   const cols = [
+    "cod_enabled INTEGER DEFAULT 1",
     "cod_supported INTEGER DEFAULT 1",
     "cod_delivery_allowed INTEGER DEFAULT 1",
+    "cod_current_balance REAL DEFAULT 0",
+    "cod_balance_limit REAL DEFAULT 50000",
+    "platform_trust_flag INTEGER DEFAULT 1",
   ];
   return Promise.all(
     cols.map(
@@ -302,15 +306,19 @@ async function syncFuelStationCodBalance(db, fuelStationId) {
   });
 
   const currentBalance = Number(pending.pending_amount || 0);
-  await new Promise((resolve) => {
-    db.run(
-      `UPDATE fuel_stations
-       SET cod_current_balance = ?, updated_at = ?
-       WHERE id = ?`,
-      [currentBalance, getLocalDateTimeString(), fuelStationId],
-      () => resolve()
-    );
-  });
+  const hasCodCurrentBalance = await hasTableColumn(db, "fuel_stations", "cod_current_balance");
+  if (hasCodCurrentBalance) {
+    const hasUpdatedAt = await hasTableColumn(db, "fuel_stations", "updated_at");
+    await new Promise((resolve) => {
+      const sql = hasUpdatedAt
+        ? `UPDATE fuel_stations SET cod_current_balance = ?, updated_at = ? WHERE id = ?`
+        : `UPDATE fuel_stations SET cod_current_balance = ? WHERE id = ?`;
+      const params = hasUpdatedAt
+        ? [currentBalance, getLocalDateTimeString(), fuelStationId]
+        : [currentBalance, fuelStationId];
+      db.run(sql, params, () => resolve());
+    });
+  }
 
   return currentBalance;
 }

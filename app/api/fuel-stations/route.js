@@ -70,10 +70,20 @@ async function ensureFuelStationTables(db) {
   });
 
   const cols = [
+    "email VARCHAR(255) UNIQUE",
+    "phone_number VARCHAR(20)",
+    "address TEXT",
+    "latitude REAL",
+    "longitude REAL",
     "name VARCHAR(255)",
     "station_name VARCHAR(255)",
     "cod_supported INTEGER DEFAULT 1",
     "cod_enabled INTEGER DEFAULT 1",
+    "cod_balance_limit INTEGER DEFAULT 50000",
+    "platform_trust_flag INTEGER DEFAULT 1",
+    "cod_delivery_allowed INTEGER DEFAULT 1",
+    "is_open INTEGER DEFAULT 1",
+    "is_verified INTEGER DEFAULT 1",
     "total_earnings REAL DEFAULT 0",
     "pending_payout REAL DEFAULT 0",
   ];
@@ -306,8 +316,8 @@ export async function PATCH(request) {
     await ensureFuelStationTables(db);
     await new Promise((resolve, reject) => {
       db.run(
-        "UPDATE fuel_stations SET cod_supported = ? WHERE id = ?",
-        [isEnabled ? 1 : 0, id],
+        "UPDATE fuel_stations SET cod_supported = ?, cod_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        [isEnabled ? 1 : 0, isEnabled ? 1 : 0, id],
         (err) => {
           if (err) reject(err);
           else resolve();
