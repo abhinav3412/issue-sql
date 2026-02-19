@@ -57,6 +57,16 @@ async function ensurePayoutSchema(db) {
     }
 }
 
+async function hasLedgerColumn(db, colName) {
+    const rows = await new Promise((resolve) => {
+        db.all("PRAGMA table_info(fuel_station_ledger)", [], (err, r) => {
+            if (err) return resolve([]);
+            resolve(r || []);
+        });
+    });
+    return rows.some((c) => String(c.name || "").toLowerCase() === String(colName).toLowerCase());
+}
+
 export async function GET(request) {
     try {
         const auth = requireAdmin(request);
@@ -70,10 +80,11 @@ export async function GET(request) {
 
         const db = getDB();
         await ensurePayoutSchema(db);
+        const hasTransactionType = await hasLedgerColumn(db, "transaction_type");
 
         let query = `
       SELECT 
-        l.id, l.fuel_station_id, l.transaction_type, l.amount, 
+        l.id, l.fuel_station_id, ${hasTransactionType ? "l.transaction_type" : "'sale' AS transaction_type"}, l.amount, 
         l.description, l.status, l.created_at,
         COALESCE(fs.station_name, fs.name) AS station_name, fs.email
       FROM fuel_station_ledger l
@@ -95,7 +106,9 @@ export async function GET(request) {
         // Usually we settle 'sale' or 'cod_settlement' (where station is owed money)
         // We might also want to invoke 'payout' records? No, we create payouts.
         // So we are looking for earnings that are pending.
-        query += ` AND l.transaction_type IN ('sale', 'cod_settlement')`; // Filter for earnings
+        if (hasTransactionType) {
+            query += ` AND l.transaction_type IN ('sale', 'cod_settlement')`; // Filter for earnings
+        }
 
         query += ` ORDER BY l.created_at ASC LIMIT ? OFFSET ?`;
         params.push(limit, offset);
@@ -137,6 +150,7 @@ export async function POST(request) {
 
         const db = getDB();
         await ensurePayoutSchema(db);
+        const hasTransactionType = await hasLedgerColumn(db, "transaction_type");
         const updatedAt = getLocalDateTimeString();
 
         // Calculate total amount to settle for only pending earning entries.
@@ -147,7 +161,7 @@ export async function POST(request) {
                  WHERE id IN (${placeholders})
                    AND fuel_station_id = ?
                    AND status = 'pending'
-                   AND transaction_type IN ('sale', 'cod_settlement')`,
+                   ${hasTransactionType ? "AND transaction_type IN ('sale', 'cod_settlement')" : ""}`,
                 [...ledger_ids, fuel_station_id],
                 (err, row) => {
                     if (err) reject(err);
@@ -174,7 +188,7 @@ export async function POST(request) {
                  WHERE id IN (${placeholders})
                    AND fuel_station_id = ?
                    AND status = 'pending'
-                   AND transaction_type IN ('sale', 'cod_settlement')`,
+                   ${hasTransactionType ? "AND transaction_type IN ('sale', 'cod_settlement')" : ""}`,
                 [updatedAt, ...ledger_ids, fuel_station_id],
                 (err) => {
                     if (err) reject(err);
@@ -203,10 +217,15 @@ export async function POST(request) {
 
         // 3. Create a 'payout' record in ledger
         await new Promise((resolve, reject) => {
-            db.run(
-                `INSERT INTO fuel_station_ledger 
+            const sql = hasTransactionType
+                ? `INSERT INTO fuel_station_ledger 
          (fuel_station_id, transaction_type, amount, description, status, created_at, updated_at)
-         VALUES (?, 'payout', ?, ?, 'settled', ?, ?)`,
+         VALUES (?, 'payout', ?, ?, 'settled', ?, ?)`
+                : `INSERT INTO fuel_station_ledger 
+         (fuel_station_id, amount, description, status, created_at, updated_at)
+         VALUES (?, ?, ?, 'settled', ?, ?)`;
+            db.run(
+                sql,
                 [
                     fuel_station_id,
                     -amountToSettle, // Negative because it's money leaving the system to the station
