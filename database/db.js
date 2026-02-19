@@ -98,6 +98,7 @@ function normalizeSqlForPostgres(sql) {
 
   text = text.replace(/\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b/gi, "BIGSERIAL PRIMARY KEY");
   text = text.replace(/\bAUTOINCREMENT\b/gi, "");
+  text = text.replace(/\bDATETIME\b/gi, "TIMESTAMP");
   text = text.replace(/\bdatetime\('now'\)\b/gi, "CURRENT_TIMESTAMP");
   text = text.replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, () => {
     convertedInsertIgnore = true;
@@ -369,11 +370,6 @@ function createPostgresAdapter() {
     } catch (e) {
       throw new Error("Invalid DATABASE_URL format. Please provide a valid postgres connection URL.");
     }
-  }
-
-  if (sslEnabled && !rejectUnauthorized) {
-    // Last-resort compatibility mode for providers/chains that fail cert validation in serverless.
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   }
 
   const pool = new Pool(
