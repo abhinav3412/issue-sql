@@ -7,7 +7,7 @@ import Link from "next/link";
 // import adminAvatar from "../../public/admin-avatar.png";
 // import userAvatar from "../../public/user-avatar.png";
 
-type Role = "User" | "Worker" | "Admin" | "Station";
+type Role = "User" | "Worker" | "Admin";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,7 +33,7 @@ export default function LoginPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          role: role || "User",
+          role: role || "Station",
           email: form.email,
           password: form.password,
         }),
@@ -128,16 +128,6 @@ export default function LoginPage() {
                 <img className="login-role-avatar" src="/admin-avatar.png" alt="Admin" />
               </span>
               <span>Admin</span>
-            </button>
-            <button
-              type="button"
-              className={`login-role-btn ${role === "Station" ? "login-role-btn--active" : ""}`}
-              onClick={() => setRole("Station")}
-            >
-              <span className="login-role-icon">
-                <img className="login-role-avatar" src="/logo.ico" alt="Station" />
-              </span>
-              <span>Station</span>
             </button>
           </div>
         </div>
