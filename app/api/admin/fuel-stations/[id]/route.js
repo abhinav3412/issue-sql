@@ -245,6 +245,23 @@ export async function DELETE(request, props) {
     const db = getDB();
 
     try {
+        // Delete dependent rows first to satisfy FK constraints in Postgres.
+        const dependentDeletes = [
+            "DELETE FROM fuel_station_bank_details WHERE fuel_station_id = ?",
+            "DELETE FROM fuel_station_stock WHERE fuel_station_id = ?",
+            "DELETE FROM fuel_station_ledger WHERE fuel_station_id = ?",
+            "DELETE FROM cod_settlements WHERE fuel_station_id = ?",
+            "DELETE FROM settlements WHERE fuel_station_id = ?",
+            "DELETE FROM fuel_station_assignments WHERE fuel_station_id = ?",
+            "DELETE FROM worker_station_cache WHERE fuel_station_id = ?",
+        ];
+
+        for (const sql of dependentDeletes) {
+            await new Promise((resolve) => {
+                db.run(sql, [id], () => resolve());
+            });
+        }
+
         await new Promise((resolve, reject) => {
             db.run(
                 `DELETE FROM fuel_stations WHERE id = ?`,
