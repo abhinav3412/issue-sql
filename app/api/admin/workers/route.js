@@ -2,9 +2,32 @@ import { NextResponse } from "next/server";
 const { getDB } = require("../../../../database/db");
 const { requireAdmin, errorResponse } = require("../../../../database/auth-middleware");
 
+async function ensureAdminWorkersSchema(db) {
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS worker_bank_details (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        worker_id INTEGER NOT NULL UNIQUE,
+        account_holder_name TEXT,
+        account_number TEXT,
+        ifsc_code TEXT,
+        bank_name TEXT,
+        is_bank_verified INTEGER DEFAULT 0,
+        razorpay_contact_id TEXT,
+        razorpay_fund_account_id TEXT,
+        rejection_reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+}
+
 export async function GET() {
   try {
     const db = getDB();
+    await ensureAdminWorkersSchema(db);
     await new Promise((resolve) => {
       db.run("ALTER TABLE workers ADD COLUMN verified INTEGER DEFAULT 0", (err) => resolve());
     });
@@ -39,6 +62,5 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to load workers" }, { status: 500 });
   }
 }
-
 
 

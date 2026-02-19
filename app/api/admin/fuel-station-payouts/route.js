@@ -2,6 +2,61 @@ import { NextResponse } from "next/server";
 const { getDB, getLocalDateTimeString } = require("../../../../database/db");
 const { requireAdmin, errorResponse } = require("../../../../database/auth-middleware");
 
+function isDuplicateColumnError(err) {
+    return /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
+}
+
+async function ensurePayoutSchema(db) {
+    await new Promise((resolve, reject) => {
+        db.run(
+            `CREATE TABLE IF NOT EXISTS fuel_stations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                station_name VARCHAR(255),
+                name VARCHAR(255),
+                email VARCHAR(255),
+                pending_payout REAL DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`,
+            (err) => (err ? reject(err) : resolve())
+        );
+    });
+
+    await new Promise((resolve, reject) => {
+        db.run(
+            `CREATE TABLE IF NOT EXISTS fuel_station_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fuel_station_id INTEGER NOT NULL,
+                transaction_type VARCHAR(50) NOT NULL,
+                amount REAL NOT NULL,
+                description TEXT,
+                status VARCHAR(30) DEFAULT 'pending',
+                reference_id VARCHAR(100),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`,
+            (err) => (err ? reject(err) : resolve())
+        );
+    });
+
+    const cols = [
+        "transaction_type VARCHAR(50)",
+        "description TEXT",
+        "status VARCHAR(30) DEFAULT 'pending'",
+        "reference_id VARCHAR(100)",
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+    ];
+    for (const col of cols) {
+        await new Promise((resolve) => {
+            db.run(`ALTER TABLE fuel_station_ledger ADD COLUMN ${col}`, (err) => {
+                if (err && !isDuplicateColumnError(err)) {
+                    console.error(`Add fuel_station_ledger.${col.split(" ")[0]} failed:`, err);
+                }
+                resolve();
+            });
+        });
+    }
+}
+
 export async function GET(request) {
     try {
         const auth = requireAdmin(request);
@@ -14,6 +69,7 @@ export async function GET(request) {
         const offset = parseInt(searchParams.get("offset")) || 0;
 
         const db = getDB();
+        await ensurePayoutSchema(db);
 
         let query = `
       SELECT 
@@ -80,6 +136,7 @@ export async function POST(request) {
         }
 
         const db = getDB();
+        await ensurePayoutSchema(db);
         const updatedAt = getLocalDateTimeString();
 
         // Calculate total amount to settle for only pending earning entries.
