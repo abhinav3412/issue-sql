@@ -48,7 +48,6 @@ export default function FuelStationLayout({
     { href: '/fuel-station/stock', label: 'Stock Management', icon: '📦' },
     { href: '/fuel-station/earnings', label: 'Earnings & Payouts', icon: '💰' },
     { href: '/fuel-station/cod-settings', label: 'COD Settings', icon: '⚙️' },
-    { href: '/fuel-station/transactions', label: 'Transactions', icon: '📝' },
   ];
 
   const isActive = (href: string) => {
@@ -109,3 +108,4 @@ export default function FuelStationLayout({
     </div>
   );
 }
+

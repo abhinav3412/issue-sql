@@ -183,14 +183,9 @@ export default function FuelStationDashboard() {
             <span className="station-action-title">COD Settings</span>
             <span className="station-action-desc">Manage COD preferences</span>
           </Link>
-
-          <Link href="/fuel-station/transactions" className="station-action-link">
-            <span className="station-action-icon">📝</span>
-            <span className="station-action-title">Transactions</span>
-            <span className="station-action-desc">View all transaction history</span>
-          </Link>
         </div>
       </div>
     </div>
   );
 }
+
