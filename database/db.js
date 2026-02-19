@@ -3,6 +3,23 @@ const { Pool } = require("pg");
 
 let dbAdapter;
 
+function hasDatabaseConfig() {
+  const hasUrl = Boolean(String(process.env.DATABASE_URL || "").trim());
+  const hasParts = Boolean(
+    String(process.env.DB_HOST || "").trim() &&
+    String(process.env.DB_USER || "").trim() &&
+    String(process.env.DB_NAME || "").trim()
+  );
+  return hasUrl || hasParts;
+}
+
+function assertDatabaseConfig() {
+  if (hasDatabaseConfig()) return;
+  throw new Error(
+    "Database config missing. Set DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME/DB_PORT."
+  );
+}
+
 function detectClient() {
   const explicit = String(process.env.DB_CLIENT || "").trim().toLowerCase();
   if (explicit === "mysql" || explicit === "postgres" || explicit === "postgresql") return explicit;
@@ -92,13 +109,14 @@ function maybeAddReturningClause(sql) {
 }
 
 function createMySQLAdapter() {
+  assertDatabaseConfig();
   const pool = process.env.DATABASE_URL
     ? mysql.createPool(process.env.DATABASE_URL)
     : mysql.createPool({
-        host: process.env.DB_HOST || "localhost",
-        user: process.env.DB_USER || "root",
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
         password: process.env.DB_PASSWORD || "",
-        database: process.env.DB_NAME || "agf_database",
+        database: process.env.DB_NAME,
         port: Number(process.env.DB_PORT || 3306),
         waitForConnections: true,
         connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
@@ -165,13 +183,14 @@ function createMySQLAdapter() {
 }
 
 function createPostgresAdapter() {
+  assertDatabaseConfig();
   const pool = process.env.DATABASE_URL
     ? new Pool({ connectionString: process.env.DATABASE_URL })
     : new Pool({
-        host: process.env.DB_HOST || "localhost",
-        user: process.env.DB_USER || "postgres",
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
         password: process.env.DB_PASSWORD || "",
-        database: process.env.DB_NAME || "agf_database",
+        database: process.env.DB_NAME,
         port: Number(process.env.DB_PORT || 5432),
         max: Number(process.env.DB_POOL_SIZE || 10),
       });
