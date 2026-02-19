@@ -11,6 +11,21 @@ async function hasColumn(db, tableName, columnName) {
   return columns.some((col) => col.name === columnName);
 }
 
+async function resolveStationId(db, rawId) {
+  const byId = await new Promise((resolve) => {
+    db.get("SELECT id FROM fuel_stations WHERE id = ?", [rawId], (err, row) => resolve(row || null));
+  });
+  if (byId?.id) return byId.id;
+
+  const hasUserId = await hasColumn(db, "fuel_stations", "user_id");
+  if (!hasUserId) return null;
+
+  const byUserId = await new Promise((resolve) => {
+    db.get("SELECT id FROM fuel_stations WHERE user_id = ?", [rawId], (err, row) => resolve(row || null));
+  });
+  return byUserId?.id || null;
+}
+
 // Get stock levels for a fuel station
 export async function GET(request) {
   try {
@@ -36,19 +51,11 @@ export async function GET(request) {
          WHERE fuel_station_id = ?
          ORDER BY fuel_type`;
 
-    // Verify fuel station exists
-    const station = await new Promise((resolve) => {
-      db.get(
-        "SELECT id FROM fuel_stations WHERE id = ?",
-        [fuel_station_id],
-        (err, row) => resolve(row || null)
-      );
-    });
-
-    if (!station) {
+    const resolvedStationId = await resolveStationId(db, fuel_station_id);
+    if (!resolvedStationId) {
       return NextResponse.json(
-        { success: false, error: "Fuel station not found" },
-        { status: 404 }
+        { success: true, stocks: [] },
+        { status: 200 }
       );
     }
 
@@ -56,7 +63,7 @@ export async function GET(request) {
     let stocks = await new Promise((resolve) => {
       db.all(
         selectSql,
-        [fuel_station_id],
+        [resolvedStationId],
         (err, rows) => resolve(rows || [])
       );
     });
@@ -72,7 +79,7 @@ export async function GET(request) {
             db.run(
               `INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, last_refilled_at, updated_at)
                VALUES (?, ?, ?, ?, ?)`,
-              [fuel_station_id, type, 0, updatedAt, updatedAt],
+              [resolvedStationId, type, 0, updatedAt, updatedAt],
               (err) => {
                 if (err) reject(err);
                 else resolve();
@@ -82,7 +89,7 @@ export async function GET(request) {
             db.run(
               `INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at)
                VALUES (?, ?, ?, ?)`,
-              [fuel_station_id, type, 0, updatedAt],
+              [resolvedStationId, type, 0, updatedAt],
               (err) => {
                 if (err) reject(err);
                 else resolve();
@@ -96,7 +103,7 @@ export async function GET(request) {
       stocks = await new Promise((resolve) => {
         db.all(
           selectSql,
-          [fuel_station_id],
+          [resolvedStationId],
           (err, rows) => resolve(rows || [])
         );
       });
