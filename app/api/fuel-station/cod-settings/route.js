@@ -16,7 +16,7 @@ export async function GET(request) {
 
     const db = getDB();
 
-    const station = await new Promise((resolve) => {
+    let station = await new Promise((resolve) => {
       db.get(
         `SELECT 
           id, station_name, cod_enabled, cod_current_balance, 
@@ -27,6 +27,21 @@ export async function GET(request) {
         (err, row) => resolve(row || null)
       );
     });
+
+    // Compatibility: some clients send auth user.id instead of fuel_stations.id.
+    if (!station) {
+      station = await new Promise((resolve) => {
+        db.get(
+          `SELECT 
+            id, station_name, cod_enabled, cod_current_balance, 
+            cod_balance_limit, platform_trust_flag
+           FROM fuel_stations
+           WHERE user_id = ?`,
+          [fuel_station_id],
+          (err, row) => resolve(row || null)
+        );
+      });
+    }
 
     if (!station) {
       return NextResponse.json(
@@ -45,7 +60,7 @@ export async function GET(request) {
          WHERE fuel_station_id = ?
            AND payment_method = 'COD'
            AND payment_status = 'PENDING_COLLECTION'`,
-        [fuel_station_id],
+        [station.id],
         (err, row) => resolve(row || {})
       );
     });
@@ -57,7 +72,7 @@ export async function GET(request) {
         `UPDATE fuel_stations
          SET cod_current_balance = ?, updated_at = ?
          WHERE id = ?`,
-        [computedCurrentBalance, getLocalDateTimeString(), fuel_station_id],
+        [computedCurrentBalance, getLocalDateTimeString(), station.id],
         () => resolve()
       );
     });
@@ -107,14 +122,23 @@ export async function PATCH(request) {
     const db = getDB();
     const updatedAt = getLocalDateTimeString();
 
-    // Verify fuel station exists
-    const station = await new Promise((resolve) => {
+    // Accept either fuel_stations.id or fuel_stations.user_id.
+    let station = await new Promise((resolve) => {
       db.get(
         "SELECT id FROM fuel_stations WHERE id = ?",
         [fuel_station_id],
         (err, row) => resolve(row || null)
       );
     });
+    if (!station) {
+      station = await new Promise((resolve) => {
+        db.get(
+          "SELECT id FROM fuel_stations WHERE user_id = ?",
+          [fuel_station_id],
+          (err, row) => resolve(row || null)
+        );
+      });
+    }
 
     if (!station) {
       return NextResponse.json(
@@ -152,7 +176,7 @@ export async function PATCH(request) {
 
     updates.push("updated_at = ?");
     values.push(updatedAt);
-    values.push(fuel_station_id);
+    values.push(station.id);
 
     const result = await new Promise((resolve, reject) => {
       db.run(
