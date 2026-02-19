@@ -3,12 +3,24 @@ const { Pool } = require("pg");
 
 let dbAdapter;
 
+function readEnv(name) {
+  const raw = String(process.env[name] || "").trim();
+  if (!raw) return "";
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    return raw.slice(1, -1);
+  }
+  return raw;
+}
+
 function hasDatabaseConfig() {
-  const hasUrl = Boolean(String(process.env.DATABASE_URL || "").trim());
+  const hasUrl = Boolean(readEnv("DATABASE_URL"));
   const hasParts = Boolean(
-    String(process.env.DB_HOST || "").trim() &&
-    String(process.env.DB_USER || "").trim() &&
-    String(process.env.DB_NAME || "").trim()
+    readEnv("DB_HOST") &&
+    readEnv("DB_USER") &&
+    readEnv("DB_NAME")
   );
   return hasUrl || hasParts;
 }
@@ -21,9 +33,9 @@ function assertDatabaseConfig() {
 }
 
 function detectClient() {
-  const explicit = String(process.env.DB_CLIENT || "").trim().toLowerCase();
+  const explicit = readEnv("DB_CLIENT").toLowerCase();
   if (explicit === "mysql" || explicit === "postgres" || explicit === "postgresql") return explicit;
-  const url = String(process.env.DATABASE_URL || "").trim().toLowerCase();
+  const url = readEnv("DATABASE_URL").toLowerCase();
   if (url.startsWith("mysql://")) return "mysql";
   if (url.startsWith("postgres://") || url.startsWith("postgresql://")) return "postgres";
   return "postgres";
@@ -110,16 +122,17 @@ function maybeAddReturningClause(sql) {
 
 function createMySQLAdapter() {
   assertDatabaseConfig();
-  const pool = process.env.DATABASE_URL
-    ? mysql.createPool(process.env.DATABASE_URL)
+  const databaseUrl = readEnv("DATABASE_URL");
+  const pool = databaseUrl
+    ? mysql.createPool(databaseUrl)
     : mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD || "",
-        database: process.env.DB_NAME,
-        port: Number(process.env.DB_PORT || 3306),
+        host: readEnv("DB_HOST"),
+        user: readEnv("DB_USER"),
+        password: readEnv("DB_PASSWORD") || "",
+        database: readEnv("DB_NAME"),
+        port: Number(readEnv("DB_PORT") || 3306),
         waitForConnections: true,
-        connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
+        connectionLimit: Number(readEnv("DB_POOL_SIZE") || 10),
       });
   console.log("Connected to MySQL database");
 
@@ -184,14 +197,14 @@ function createMySQLAdapter() {
 
 function createPostgresAdapter() {
   assertDatabaseConfig();
-  const dbUrlRaw = String(process.env.DATABASE_URL || "");
-  const dbHost = String(process.env.DB_HOST || "");
+  const dbUrlRaw = readEnv("DATABASE_URL");
+  const dbHost = readEnv("DB_HOST");
   const isSupabase = /supabase\.com/i.test(dbUrlRaw) || /supabase\.com/i.test(dbHost);
   const sslEnabled =
-    String(process.env.DB_SSL || "").trim().toLowerCase() === "true" ||
+    readEnv("DB_SSL").toLowerCase() === "true" ||
     /sslmode=require/i.test(dbUrlRaw) ||
     isSupabase;
-  const rejectUnauthorizedEnv = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "").trim().toLowerCase();
+  const rejectUnauthorizedEnv = readEnv("DB_SSL_REJECT_UNAUTHORIZED").toLowerCase();
   const rejectUnauthorized = rejectUnauthorizedEnv
     ? rejectUnauthorizedEnv !== "false"
     : false;
@@ -200,9 +213,11 @@ function createPostgresAdapter() {
   if (dbUrl) {
     try {
       const parsed = new URL(dbUrl);
-      if (sslEnabled && !rejectUnauthorized) {
-        parsed.searchParams.set("sslmode", "no-verify");
-      }
+      // Prevent pg from overriding SSL behavior from URL params.
+      parsed.searchParams.delete("sslmode");
+      parsed.searchParams.delete("sslcert");
+      parsed.searchParams.delete("sslkey");
+      parsed.searchParams.delete("sslrootcert");
       dbUrl = parsed.toString();
     } catch (e) {
       dbUrl = dbUrlRaw;
@@ -215,12 +230,12 @@ function createPostgresAdapter() {
         ssl,
       })
     : new Pool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD || "",
-        database: process.env.DB_NAME,
-        port: Number(process.env.DB_PORT || 5432),
-        max: Number(process.env.DB_POOL_SIZE || 10),
+        host: readEnv("DB_HOST"),
+        user: readEnv("DB_USER"),
+        password: readEnv("DB_PASSWORD") || "",
+        database: readEnv("DB_NAME"),
+        port: Number(readEnv("DB_PORT") || 5432),
+        max: Number(readEnv("DB_POOL_SIZE") || 10),
         ssl,
       });
   console.log("Connected to PostgreSQL database");
