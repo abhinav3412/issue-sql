@@ -65,10 +65,14 @@ async function selectFuelStation(params) {
       (s) => flagEnabled(s.is_open, true) && flagEnabled(s.is_verified, true)
     );
 
-    if (eligibleStations.length === 0) {
+    // Fallback for migrated/inconsistent records:
+    // if no station passes flags, continue with all stations so assignment can still proceed.
+    const candidateStations = eligibleStations.length > 0 ? eligibleStations : allStations;
+
+    if (candidateStations.length === 0) {
       return {
         success: false,
-        error: "No verified fuel stations available",
+        error: "No fuel stations available",
         fallback: null,
       };
     }
@@ -77,7 +81,7 @@ async function selectFuelStation(params) {
     const stationsWithDistance = calculateDistances(
       worker_lat,
       worker_lng,
-      eligibleStations
+      candidateStations
     );
 
     // Step 3: Filter by max radius
@@ -239,10 +243,11 @@ async function getAlternativeFuelStations(params) {
     const eligibleStations = stations.filter(
       (s) => flagEnabled(s.is_open, true) && flagEnabled(s.is_verified, true)
     );
+    const candidateStations = eligibleStations.length > 0 ? eligibleStations : stations;
 
     // Filter by distance and get stock info
     const stationsWithInfo = await Promise.all(
-      calculateDistances(worker_lat, worker_lng, eligibleStations)
+      calculateDistances(worker_lat, worker_lng, candidateStations)
         .filter((s) => s.distance_km <= max_radius_km)
         .slice(0, limit)
         .map(async (station) => {
