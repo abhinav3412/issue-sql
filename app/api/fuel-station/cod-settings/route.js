@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 const { getDB, getLocalDateTimeString } = require("../../../../database/db");
+const { requireAuth } = require("../../../../database/auth-middleware");
 
 function hasTableColumn(db, tableName, colName) {
   return new Promise((resolve) => {
@@ -115,6 +116,24 @@ async function ensureStationRowForUser(db, userId) {
   return findStationByIdOrUserId(db, user.id);
 }
 
+async function resolveStationFromAuthOrParam(db, request, fuel_station_id) {
+  const auth = requireAuth(request);
+
+  // For station users, trust token identity first to avoid reading a wrong/default row.
+  if (auth && (auth.role === "Station" || auth.role === "Fuel_Station")) {
+    const byTokenId = await findStationByIdOrUserId(db, auth.id);
+    if (byTokenId) return byTokenId;
+  }
+
+  // Fallback for non-station callers (admin/manual).
+  if (fuel_station_id != null && fuel_station_id !== "") {
+    const byParam = await findStationByIdOrUserId(db, fuel_station_id);
+    if (byParam) return byParam;
+  }
+
+  return null;
+}
+
 // Get COD settings
 export async function GET(request) {
   try {
@@ -130,31 +149,15 @@ export async function GET(request) {
 
     const db = getDB();
 
-    let station = await findStationByIdOrUserId(db, fuel_station_id);
-    if (!station) {
-      station = await ensureStationRowForUser(db, fuel_station_id);
-    }
+    const station = await resolveStationFromAuthOrParam(db, request, fuel_station_id);
 
     if (!station) {
       return NextResponse.json(
         {
-          success: true,
-          cod_settings: {
-            station_id: Number(fuel_station_id),
-            station_name: `Station ${fuel_station_id}`,
-            cod_enabled: false,
-            cod_current_balance: 0,
-            cod_balance_limit: 50000,
-            platform_trust_flag: false,
-            can_accept_cod: false,
-          },
-          pending_cod: {
-            count: 0,
-            total_pending: 0,
-          },
-          warning: "Fuel station record not found; returning default settings.",
+          success: false,
+          error: "Fuel station not found for this account",
         },
-        { status: 200 }
+        { status: 404 }
       );
     }
 
@@ -231,15 +234,12 @@ export async function PATCH(request) {
     const updatedAt = getLocalDateTimeString();
 
     // Accept either fuel_stations.id or fuel_stations.user_id.
-    let station = await findStationByIdOrUserId(db, fuel_station_id);
-    if (!station) {
-      station = await ensureStationRowForUser(db, fuel_station_id);
-    }
+    const station = await resolveStationFromAuthOrParam(db, request, fuel_station_id);
 
     if (!station) {
       return NextResponse.json(
-        { success: false, error: "Fuel station not found" },
-        { status: 200 }
+        { success: false, error: "Fuel station not found for this account" },
+        { status: 404 }
       );
     }
 
