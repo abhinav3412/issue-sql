@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
-const { getDB } = require('../../../database/db');
+const { getDB, getLocalDateTimeString } = require('../../../database/db');
 const bcrypt = require('bcryptjs');
 
 function isDuplicateColumnError(err) {
   return /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
+}
+
+async function getTableColumns(db, tableName) {
+  const rows = await new Promise((resolve) => {
+    db.all(`PRAGMA table_info(${tableName})`, [], (err, r) => {
+      if (err) return resolve([]);
+      resolve(r || []);
+    });
+  });
+  return new Set(rows.map((r) => String(r.name || "").toLowerCase()));
 }
 
 async function ensureFuelStationTables(db) {
@@ -176,6 +186,7 @@ export async function POST(request) {
 
   try {
     await ensureFuelStationTables(db);
+    const stationCols = await getTableColumns(db, "fuel_stations");
     console.log("POST /api/fuel-stations: Creating station", station_name);
 
     // 1. First create/get user record for the station
@@ -221,11 +232,40 @@ export async function POST(request) {
     }
 
     // 2. Create the fuel station record
+    const insertCols = [];
+    const insertVals = [];
+    const insertPlaceholders = [];
+    const add = (col, val) => {
+      if (stationCols.has(col)) {
+        insertCols.push(col);
+        insertVals.push(val);
+        insertPlaceholders.push("?");
+      }
+    };
+
+    add("name", station_name);
+    add("station_name", station_name);
+    add("email", email || null);
+    add("phone_number", phone_number || null);
+    add("address", address || null);
+    add("latitude", parsedLatitude);
+    add("longitude", parsedLongitude);
+    add("cod_supported", cod_enabled ? 1 : 0);
+    add("cod_enabled", cod_enabled ? 1 : 0);
+    add("is_open", 1);
+    add("is_verified", 1);
+    add("user_id", user_id);
+    add("created_at", getLocalDateTimeString());
+    add("updated_at", getLocalDateTimeString());
+
+    if (insertCols.length === 0) {
+      throw new Error("fuel_stations schema has no compatible insert columns");
+    }
+
     const result = await new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO fuel_stations (name, email, phone_number, address, latitude, longitude, cod_supported, is_open, is_verified, user_id, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-        [station_name, email || null, phone_number || null, address || null, parsedLatitude, parsedLongitude, cod_enabled ? 1 : 0, user_id],
+        `INSERT INTO fuel_stations (${insertCols.join(", ")}) VALUES (${insertPlaceholders.join(", ")})`,
+        insertVals,
         function (err) {
           if (err) {
             console.error("POST /api/fuel-stations DB Error:", err);

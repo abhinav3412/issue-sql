@@ -6,6 +6,18 @@ const VALID_SERVICE_TYPES = ["petrol", "diesel", "crane", "mechanic_bike", "mech
 const isDuplicateColumnError = (err) =>
   /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
 
+function hasTableColumn(db, tableName, colName) {
+  return new Promise((resolve) => {
+    db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      if (err) return resolve(false);
+      const found = (rows || []).some(
+        (c) => String(c.name || "").toLowerCase() === String(colName).toLowerCase()
+      );
+      resolve(found);
+    });
+  });
+}
+
 function ensureServiceRequestsTable(db) {
   return new Promise((resolve, reject) => {
     db.run(
@@ -223,6 +235,23 @@ function ensureFuelStationCodColumns(db) {
         })
     )
   );
+}
+
+function ensureFuelStationsTable(db) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS fuel_stations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name VARCHAR(255),
+        station_name VARCHAR(255),
+        latitude REAL,
+        longitude REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
 }
 
 const toRadians = (v) => (v * Math.PI) / 180;
@@ -658,7 +687,10 @@ export async function GET(request) {
   try {
     const db = getDB();
     await ensureServiceRequestsTable(db);
+    await ensureServiceRequestTimelineColumns(db);
+    await ensureServiceRequestPaymentColumns(db);
     await ensureSettlementsTable(db);
+    await ensureFuelStationsTable(db);
 
     const url = request.url ? new URL(request.url) : null;
     const userIdParam = url?.searchParams?.get("user_id");
@@ -666,10 +698,20 @@ export async function GET(request) {
     const userId = userIdParam != null && userIdParam !== "" ? Number(userIdParam) : null;
     const workerId = workerIdParam != null && workerIdParam !== "" ? Number(workerIdParam) : null;
 
+    const hasStationName = await hasTableColumn(db, "fuel_stations", "station_name");
+    const hasStationLegacyName = await hasTableColumn(db, "fuel_stations", "name");
+    const fuelStationNameExpr = hasStationName && hasStationLegacyName
+      ? "COALESCE(fs.station_name, fs.name)"
+      : hasStationName
+        ? "fs.station_name"
+        : hasStationLegacyName
+          ? "fs.name"
+          : "NULL";
+
     let sql = `
       SELECT sr.*, 
              u.first_name AS user_first_name, u.last_name AS user_last_name,
-             fs.name AS fuel_station_name, fs.latitude AS fuel_station_lat, fs.longitude AS fuel_station_lon,
+             ${fuelStationNameExpr} AS fuel_station_name, fs.latitude AS fuel_station_lat, fs.longitude AS fuel_station_lon,
              s.worker_payout
       FROM service_requests sr 
       LEFT JOIN users u ON sr.user_id = u.id
