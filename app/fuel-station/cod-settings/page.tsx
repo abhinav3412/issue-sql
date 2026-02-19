@@ -40,7 +40,10 @@ export default function CODSettingsPage() {
   const fetchCODSettings = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/fuel-station/cod-settings', { headers: getAuthHeaders() });
+      const response = await fetch(
+        `/api/fuel-station/cod-settings?fuel_station_id=${user?.id}`,
+        { headers: getAuthHeaders() }
+      );
 
       if (!response.ok) throw new Error('Failed to fetch COD settings');
 
@@ -70,6 +73,7 @@ export default function CODSettingsPage() {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({
+          fuel_station_id: user?.id,
           ...formData,
         }),
       });

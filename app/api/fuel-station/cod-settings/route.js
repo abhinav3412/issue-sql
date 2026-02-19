@@ -166,18 +166,18 @@ async function ensureStationRowForUser(db, userId) {
 async function resolveStationFromAuthOrParam(db, request, fuel_station_id) {
   const auth = requireAuth(request);
 
-  // For station users, trust token identity first to avoid reading a wrong/default row.
+  // Match dashboard behavior first: honor requested station id/user_id when provided.
+  if (fuel_station_id != null && fuel_station_id !== "") {
+    const byParam = await findStationByIdOrUserId(db, fuel_station_id);
+    if (byParam) return byParam;
+  }
+
+  // Fallback to authenticated station identity.
   if (auth && (auth.role === "Station" || auth.role === "Fuel_Station")) {
     const byTokenId = await findStationByIdOrUserId(db, auth.id);
     if (byTokenId) return byTokenId;
     const byEmail = await findStationByEmail(db, auth.email);
     if (byEmail) return byEmail;
-  }
-
-  // Fallback for non-station callers (admin/manual).
-  if (fuel_station_id != null && fuel_station_id !== "") {
-    const byParam = await findStationByIdOrUserId(db, fuel_station_id);
-    if (byParam) return byParam;
   }
 
   return null;
