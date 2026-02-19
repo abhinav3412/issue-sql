@@ -3,6 +3,8 @@ const { getDB, getLocalDateTimeString } = require("../../../../../database/db");
 const bcrypt = require("bcryptjs");
 
 const ALLOWED_STATUSES = ["Available", "Busy", "Offline"];
+const isDuplicateColumnError = (err) =>
+  /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
 
 export async function GET(request, context) {
   try {
@@ -48,7 +50,7 @@ export async function PATCH(request, context) {
     if (reverify) {
       await new Promise((resolve, reject) => {
         db.run(
-          "UPDATE workers SET license_photo = NULL, self_photo = NULL, docs_submitted_at = NULL, verified = 0, updated_at = datetime('now') WHERE id = ?",
+          "UPDATE workers SET license_photo = NULL, self_photo = NULL, docs_submitted_at = NULL, verified = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
           [id],
           function (err) {
             if (err) reject(err);
@@ -88,7 +90,7 @@ export async function PATCH(request, context) {
 
     await new Promise((resolve) => {
       db.run("ALTER TABLE workers ADD COLUMN verified INTEGER DEFAULT 0", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
+        if (err && !isDuplicateColumnError(err)) {
           console.error("Add workers.verified failed:", err);
         }
         resolve();
@@ -118,7 +120,7 @@ export async function PATCH(request, context) {
 
     if (new_password != null && String(new_password).trim() !== "") {
       const hashedPassword = await bcrypt.hash(String(new_password).trim(), 10);
-      let query = "UPDATE workers SET first_name = ?, last_name = ?, email = ?, phone_number = ?, status = ?, status_locked = ?, verified = ?, password = ?, updated_at = datetime('now')";
+      let query = "UPDATE workers SET first_name = ?, last_name = ?, email = ?, phone_number = ?, status = ?, status_locked = ?, verified = ?, password = ?, updated_at = CURRENT_TIMESTAMP";
       let qParams = [first_name, last_name, email, phone_number, status, finalLock, finalVerified, hashedPassword];
 
       if (finalVerified === 0) {
@@ -137,7 +139,7 @@ export async function PATCH(request, context) {
         );
       });
     } else {
-      let query = "UPDATE workers SET first_name = ?, last_name = ?, email = ?, phone_number = ?, status = ?, status_locked = ?, verified = ?, updated_at = datetime('now')";
+      let query = "UPDATE workers SET first_name = ?, last_name = ?, email = ?, phone_number = ?, status = ?, status_locked = ?, verified = ?, updated_at = CURRENT_TIMESTAMP";
       let qParams = [first_name, last_name, email, phone_number, status, finalLock, finalVerified];
 
       if (finalVerified === 0) {
@@ -210,7 +212,7 @@ export async function DELETE(request, context) {
 
     await new Promise((resolve) => {
       db.run("ALTER TABLE workers ADD COLUMN verified INTEGER DEFAULT 0", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
+        if (err && !isDuplicateColumnError(err)) {
           console.error("Add workers.verified failed:", err);
         }
         resolve();
@@ -252,7 +254,6 @@ export async function DELETE(request, context) {
     return NextResponse.json({ error: "Failed to delete worker" }, { status: 500 });
   }
 }
-
 
 
 
