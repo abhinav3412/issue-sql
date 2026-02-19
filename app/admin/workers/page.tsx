@@ -21,6 +21,12 @@ type Worker = {
   license_photo?: string;
   self_photo?: string;
 };
+function formatAvgRating(value: unknown): string | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n.toFixed(1);
+}
+
 
 export default function AdminWorkersPage() {
   const { showToast, showConfirm } = useNotification();
@@ -339,8 +345,8 @@ export default function AdminWorkersPage() {
                       </div>
                     </td>
                     <td>
-                      {w.avg_rating ? (
-                        <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>★ {w.avg_rating.toFixed(1)}</span>
+                      {formatAvgRating(w.avg_rating) ? (
+                        <span style={{ color: '#fbbf24', fontWeight: 'bold' }}>★ {formatAvgRating(w.avg_rating)}</span>
                       ) : (
                         <span style={{ color: '#94a3b8' }}>—</span>
                       )}
@@ -625,3 +631,4 @@ export default function AdminWorkersPage() {
     </div>
   );
 }
+
