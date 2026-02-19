@@ -137,8 +137,24 @@ export async function GET(request) {
 
     if (!station) {
       return NextResponse.json(
-        { success: false, error: "Fuel station not found" },
-        { status: 404 }
+        {
+          success: true,
+          cod_settings: {
+            station_id: Number(fuel_station_id),
+            station_name: `Station ${fuel_station_id}`,
+            cod_enabled: false,
+            cod_current_balance: 0,
+            cod_balance_limit: 50000,
+            platform_trust_flag: false,
+            can_accept_cod: false,
+          },
+          pending_cod: {
+            count: 0,
+            total_pending: 0,
+          },
+          warning: "Fuel station record not found; returning default settings.",
+        },
+        { status: 200 }
       );
     }
 
@@ -223,7 +239,7 @@ export async function PATCH(request) {
     if (!station) {
       return NextResponse.json(
         { success: false, error: "Fuel station not found" },
-        { status: 404 }
+        { status: 200 }
       );
     }
 
