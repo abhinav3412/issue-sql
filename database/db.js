@@ -367,8 +367,13 @@ function createPostgresAdapter() {
         database: decodeURIComponent((parsed.pathname || "/").replace(/^\//, "")) || "postgres",
       };
     } catch (e) {
-      poolConfig = null;
+      throw new Error("Invalid DATABASE_URL format. Please provide a valid postgres connection URL.");
     }
+  }
+
+  if (sslEnabled && !rejectUnauthorized) {
+    // Last-resort compatibility mode for providers/chains that fail cert validation in serverless.
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   }
 
   const pool = new Pool(
