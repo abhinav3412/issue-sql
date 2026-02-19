@@ -61,9 +61,22 @@ export async function POST(request) {
         const db = getDB();
         await ensureServicePricesTable(db);
         for (const item of prices) {
+            const updated = await new Promise((resolve, reject) => {
+                db.run(
+                    "UPDATE service_prices SET amount = ?, updated_at = CURRENT_TIMESTAMP WHERE service_type = ?",
+                    [item.amount, item.service_type],
+                    function (err) {
+                        if (err) return reject(err);
+                        resolve(Number(this?.changes || 0));
+                    }
+                );
+            });
+
+            if (updated > 0) continue;
+
             await new Promise((resolve, reject) => {
                 db.run(
-                    "INSERT OR REPLACE INTO service_prices (service_type, amount, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                    "INSERT OR IGNORE INTO service_prices (service_type, amount, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
                     [item.service_type, item.amount],
                     (err) => (err ? reject(err) : resolve())
                 );
