@@ -3,6 +3,8 @@ const { getDB, getLocalDateTimeString } = require("../../../database/db");
 const { calculateSettlement } = require("../../../database/settlement-calculator");
 
 const VALID_SERVICE_TYPES = ["petrol", "diesel", "crane", "mechanic_bike", "mechanic_car"];
+const isDuplicateColumnError = (err) =>
+  /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
 
 function ensureServiceRequestsTable(db) {
   return new Promise((resolve, reject) => {
@@ -47,7 +49,7 @@ function ensureServiceRequestTimelineColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE service_requests ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add service_requests.${col} failed:`, err);
             }
             resolve();
@@ -73,7 +75,7 @@ function ensureServiceRequestPaymentColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE service_requests ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add service_requests.${col} failed:`, err);
             }
             resolve();
@@ -97,7 +99,7 @@ function ensureUserCodColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE users ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add users.${col} failed:`, err);
             }
             resolve();
@@ -114,7 +116,7 @@ function ensureUserProfileColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE users ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name|already exists/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add users.${col} failed:`, err);
             }
             resolve();
@@ -213,7 +215,7 @@ function ensureFuelStationCodColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE fuel_stations ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add fuel_stations.${col} failed:`, err);
             }
             resolve();

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 const { getDB } = require("../../../../database/db");
+const isDuplicateColumnError = (err) =>
+  /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
 
 const ACTIVITY_LOG_TABLE = `
   CREATE TABLE IF NOT EXISTS activity_log (
@@ -66,7 +68,7 @@ async function ensureServiceRequestColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE service_requests ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add service_requests.${col} failed:`, err);
             }
             resolve();
@@ -87,7 +89,7 @@ async function ensureWorkerColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE workers ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add workers.${col} failed:`, err);
             }
             resolve();
@@ -114,7 +116,7 @@ export async function GET(request) {
         (col) =>
           new Promise((resolve) => {
             db.run(`ALTER TABLE service_requests ADD COLUMN ${col} DATETIME`, (err) => {
-              if (err && !/duplicate column name/i.test(err.message)) {
+              if (err && !isDuplicateColumnError(err)) {
                 console.error(`Add service_requests.${col} failed:`, err);
               }
               resolve();
@@ -300,10 +302,15 @@ export async function GET(request) {
       );
     });
 
+    const etaExpr =
+      db.type === "postgres" || db.type === "mysql"
+        ? "(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60.0)"
+        : "((julianday(completed_at) - julianday(created_at)) * 24 * 60)";
+
     const avgEtaRows = await new Promise((resolve, reject) => {
       db.all(
         `SELECT DATE(created_at) as day,
-                AVG((julianday(completed_at) - julianday(created_at)) * 24 * 60) as avg_minutes
+                AVG(${etaExpr}) as avg_minutes
          FROM service_requests
          WHERE completed_at IS NOT NULL
            AND created_at >= ?
@@ -316,7 +323,7 @@ export async function GET(request) {
 
     const avgEtaOverallRow = await new Promise((resolve) => {
       db.get(
-        `SELECT AVG((julianday(completed_at) - julianday(created_at)) * 24 * 60) as avg_minutes
+        `SELECT AVG(${etaExpr}) as avg_minutes
          FROM service_requests
          WHERE completed_at IS NOT NULL
            AND created_at >= ?`,
