@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 const { getDB } = require("../../../../../database/db");
 const bcrypt = require("bcryptjs");
 
+async function getTableColumns(db, tableName) {
+    const rows = await new Promise((resolve) => {
+        db.all(`PRAGMA table_info(${tableName})`, [], (err, r) => {
+            if (err) return resolve([]);
+            resolve(r || []);
+        });
+    });
+    return new Set(rows.map((r) => String(r.name || "").toLowerCase()));
+}
+
 export async function GET(request, props) {
     const params = await props.params;
     const { id } = params;
@@ -128,13 +138,25 @@ export async function PATCH(request, props) {
     const db = getDB();
 
     try {
+        const stationCols = await getTableColumns(db, "fuel_stations");
         // 1. Update station fields if any
-        if (updates.length > 0) {
-            values.push(id);
+        const filteredUpdates = [];
+        const filteredValues = [];
+        for (let i = 0; i < updates.length; i += 1) {
+            const col = updates[i].split("=")[0].trim().toLowerCase();
+            if (stationCols.has(col)) {
+                filteredUpdates.push(updates[i]);
+                filteredValues.push(values[i]);
+            }
+        }
+
+        const canUpdateUpdatedAt = stationCols.has("updated_at");
+        if (filteredUpdates.length > 0) {
+            filteredValues.push(id);
             await new Promise((resolve, reject) => {
                 db.run(
-                    `UPDATE fuel_stations SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-                    values,
+                    `UPDATE fuel_stations SET ${filteredUpdates.join(", ")}${canUpdateUpdatedAt ? ", updated_at = CURRENT_TIMESTAMP" : ""} WHERE id = ?`,
+                    filteredValues,
                     function (err) {
                         if (err) reject(err);
                         else resolve(this.changes);

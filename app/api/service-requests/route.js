@@ -700,6 +700,8 @@ export async function GET(request) {
 
     const hasStationName = await hasTableColumn(db, "fuel_stations", "station_name");
     const hasStationLegacyName = await hasTableColumn(db, "fuel_stations", "name");
+    const hasStationLatitude = await hasTableColumn(db, "fuel_stations", "latitude");
+    const hasStationLongitude = await hasTableColumn(db, "fuel_stations", "longitude");
     const fuelStationNameExpr = hasStationName && hasStationLegacyName
       ? "COALESCE(fs.station_name, fs.name)"
       : hasStationName
@@ -707,11 +709,13 @@ export async function GET(request) {
         : hasStationLegacyName
           ? "fs.name"
           : "NULL";
+    const fuelStationLatExpr = hasStationLatitude ? "fs.latitude" : "NULL";
+    const fuelStationLonExpr = hasStationLongitude ? "fs.longitude" : "NULL";
 
     let sql = `
       SELECT sr.*, 
              u.first_name AS user_first_name, u.last_name AS user_last_name,
-             ${fuelStationNameExpr} AS fuel_station_name, fs.latitude AS fuel_station_lat, fs.longitude AS fuel_station_lon,
+             ${fuelStationNameExpr} AS fuel_station_name, ${fuelStationLatExpr} AS fuel_station_lat, ${fuelStationLonExpr} AS fuel_station_lon,
              s.worker_payout
       FROM service_requests sr 
       LEFT JOIN users u ON sr.user_id = u.id
