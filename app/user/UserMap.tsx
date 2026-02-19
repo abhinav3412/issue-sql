@@ -371,8 +371,11 @@ function HeatmapOverlay({ points }: { points: HeatPoint[] }) {
 
   useEffect(() => {
     if (!map) return;
-    if (!points.length) return;
-    const data = points.map((p) => [p.lat, p.lng, p.intensity]);
+    const safePoints = points.filter(
+      (p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lng) && Number.isFinite(p?.intensity)
+    );
+    if (!safePoints.length) return;
+    const data = safePoints.map((p) => [p.lat, p.lng, p.intensity]);
 
     const radiusForZoom = (zoom: number) => {
       if (zoom <= 9) return 50;

@@ -71,6 +71,7 @@ const AssignedUserIcon = L.divIcon({
 
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629]; // India fallback
 const DEFAULT_ZOOM = 12;
+const isFiniteCoord = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 type TileType = "street" | "satellite";
 
@@ -287,7 +288,7 @@ export default function AdminMap({
         )}
 
         {/* Workers */}
-        {workers.filter(w => w.latitude && w.longitude).map((worker) => (
+        {workers.filter((w) => isFiniteCoord(w?.latitude) && isFiniteCoord(w?.longitude)).map((worker) => (
           <Marker key={`w-${worker.id}`} position={[worker.latitude, worker.longitude]} icon={WorkerIcon}>
             <Popup>
               <div className="leaflet-popup-premium-content">
@@ -301,7 +302,7 @@ export default function AdminMap({
 
         {/* Requests */}
         {showRequests &&
-          serviceRequests.filter(r => r.user_lat && r.user_lon).map((req) => (
+          serviceRequests.filter((r) => isFiniteCoord(r?.user_lat) && isFiniteCoord(r?.user_lon)).map((req) => (
             <Marker
               key={`r-${req.id}`}
               position={[req.user_lat, req.user_lon]}
@@ -319,7 +320,7 @@ export default function AdminMap({
           ))}
 
         {/* Fuel Stations */}
-        {fuelStations.map((station) => (
+        {fuelStations.filter((station) => isFiniteCoord(station?.latitude) && isFiniteCoord(station?.longitude)).map((station) => (
           <Marker key={station.id} position={[station.latitude, station.longitude]} icon={FuelStationIcon}>
             <Popup>⛽ {station.name}</Popup>
           </Marker>
