@@ -273,6 +273,24 @@ export async function DELETE(request, props) {
             );
         }
         const stationId = station.id;
+        const linkedUserId = station.user_id ? Number(station.user_id) : null;
+
+        // Disable linked user credentials first so deleted station accounts cannot log in.
+        if (linkedUserId) {
+            const randomPassword = `deleted_${linkedUserId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            const hashedPassword = await bcrypt.hash(randomPassword, 10);
+            const tombstoneEmail = `deleted_station_${linkedUserId}_${Date.now()}@deleted.local`;
+            await new Promise((resolve, reject) => {
+                db.run(
+                    "UPDATE users SET password = ?, email = ? WHERE id = ?",
+                    [hashedPassword, tombstoneEmail, linkedUserId],
+                    function (err) {
+                        if (err) return reject(err);
+                        resolve(this.changes);
+                    }
+                );
+            });
+        }
 
         // Delete dependent rows first to satisfy FK constraints in Postgres.
         const dependentDeletes = [
