@@ -28,20 +28,59 @@ async function findStationByIdOrUserId(db, idValue) {
   });
 
   if (!station) {
-    station = await new Promise((resolve) => {
+    const hasUserId = await hasTableColumn(db, "fuel_stations", "user_id");
+    if (hasUserId) {
+      station = await new Promise((resolve) => {
+        db.get(
+          `SELECT 
+            id, station_name, cod_enabled, cod_current_balance, 
+            cod_balance_limit, platform_trust_flag
+           FROM fuel_stations
+           WHERE user_id = ?`,
+          [idValue],
+          (err, row) => resolve(row || null)
+        );
+      });
+    }
+  }
+
+  return station;
+}
+
+async function findStationByEmail(db, email) {
+  if (!email) return null;
+  const hasEmail = await hasTableColumn(db, "fuel_stations", "email");
+  if (hasEmail) {
+    const byStationEmail = await new Promise((resolve) => {
       db.get(
         `SELECT 
           id, station_name, cod_enabled, cod_current_balance, 
           cod_balance_limit, platform_trust_flag
          FROM fuel_stations
-         WHERE user_id = ?`,
-        [idValue],
+         WHERE email = ?`,
+        [email],
         (err, row) => resolve(row || null)
       );
     });
+    if (byStationEmail) return byStationEmail;
   }
 
-  return station;
+  const hasUserId = await hasTableColumn(db, "fuel_stations", "user_id");
+  if (!hasUserId) return null;
+
+  return new Promise((resolve) => {
+    db.get(
+      `SELECT
+        fs.id, fs.station_name, fs.cod_enabled, fs.cod_current_balance,
+        fs.cod_balance_limit, fs.platform_trust_flag
+       FROM fuel_stations fs
+       JOIN users u ON fs.user_id = u.id
+       WHERE u.email = ?
+       LIMIT 1`,
+      [email],
+      (err, row) => resolve(row || null)
+    );
+  });
 }
 
 async function ensureStationRowForUser(db, userId) {
@@ -123,6 +162,8 @@ async function resolveStationFromAuthOrParam(db, request, fuel_station_id) {
   if (auth && (auth.role === "Station" || auth.role === "Fuel_Station")) {
     const byTokenId = await findStationByIdOrUserId(db, auth.id);
     if (byTokenId) return byTokenId;
+    const byEmail = await findStationByEmail(db, auth.email);
+    if (byEmail) return byEmail;
   }
 
   // Fallback for non-station callers (admin/manual).
