@@ -16,10 +16,10 @@ function hasTableColumn(db, tableName, colName) {
 
 async function findStationByIdOrUserId(db, idValue) {
   let station = await new Promise((resolve) => {
-    db.get(
-      `SELECT 
-        id, station_name, cod_enabled, cod_current_balance, 
-        cod_balance_limit, platform_trust_flag
+      db.get(
+        `SELECT 
+          id, station_name, cod_enabled, cod_current_balance, 
+          cod_balance_limit, platform_trust_flag, is_verified
        FROM fuel_stations
        WHERE id = ?`,
       [idValue],
@@ -34,7 +34,7 @@ async function findStationByIdOrUserId(db, idValue) {
         db.get(
           `SELECT 
             id, station_name, cod_enabled, cod_current_balance, 
-            cod_balance_limit, platform_trust_flag
+            cod_balance_limit, platform_trust_flag, is_verified
            FROM fuel_stations
            WHERE user_id = ?`,
           [idValue],
@@ -52,10 +52,10 @@ async function findStationByEmail(db, email) {
   const hasEmail = await hasTableColumn(db, "fuel_stations", "email");
   if (hasEmail) {
     const byStationEmail = await new Promise((resolve) => {
-      db.get(
+        db.get(
         `SELECT 
           id, station_name, cod_enabled, cod_current_balance, 
-          cod_balance_limit, platform_trust_flag
+          cod_balance_limit, platform_trust_flag, is_verified
          FROM fuel_stations
          WHERE email = ?`,
         [email],
@@ -72,7 +72,7 @@ async function findStationByEmail(db, email) {
     db.get(
       `SELECT
         fs.id, fs.station_name, fs.cod_enabled, fs.cod_current_balance,
-        fs.cod_balance_limit, fs.platform_trust_flag
+        fs.cod_balance_limit, fs.platform_trust_flag, fs.is_verified
        FROM fuel_stations fs
        JOIN users u ON fs.user_id = u.id
        WHERE u.email = ?
@@ -193,6 +193,7 @@ export async function GET(request) {
             station_id: Number(fuel_station_id || 0),
             station_name: "Station",
             cod_enabled: false,
+            is_verified: false,
             cod_current_balance: 0,
             cod_balance_limit: 50000,
             platform_trust_flag: false,
@@ -242,6 +243,7 @@ export async function GET(request) {
           station_id: station.id,
           station_name: station.station_name,
           cod_enabled: station.cod_enabled === 1,
+          is_verified: station.is_verified === 1,
           cod_current_balance: computedCurrentBalance,
           cod_balance_limit: station.cod_balance_limit,
           platform_trust_flag: station.platform_trust_flag === 1,

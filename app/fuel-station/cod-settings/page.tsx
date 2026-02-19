@@ -8,6 +8,7 @@ interface CODSettings {
     station_id: number;
     station_name: string;
     cod_enabled: boolean;
+    is_verified: boolean;
     cod_current_balance: number;
     cod_balance_limit: number;
     platform_trust_flag: boolean;
@@ -148,6 +149,14 @@ export default function CODSettingsPage() {
                 <p style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: '0.25rem' }}>Can Accept New COD</p>
                 <p style={{ fontSize: '1.125rem', fontWeight: 700, color: settings.cod_settings.can_accept_cod ? '#22c55e' : '#eab308' }}>
                   {settings.cod_settings.can_accept_cod ? '✓ Yes' : '✗ No'}
+                </p>
+              </div>
+
+              {/* Identity Verification */}
+              <div style={{ padding: '1.25rem', background: 'rgba(255,255,255,0.02)', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <p style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: '0.25rem' }}>Identity Verification</p>
+                <p style={{ fontSize: '1.125rem', fontWeight: 700, color: settings.cod_settings.is_verified ? '#22c55e' : '#eab308' }}>
+                  {settings.cod_settings.is_verified ? '✓ Verified' : '⏳ Pending'}
                 </p>
               </div>
 
