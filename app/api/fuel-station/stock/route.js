@@ -147,16 +147,8 @@ export async function PATCH(request) {
     const updatedAt = getLocalDateTimeString();
     const supportsLastRefilledAt = await hasColumn(db, "fuel_station_stock", "last_refilled_at");
 
-    // Verify fuel station exists
-    const station = await new Promise((resolve) => {
-      db.get(
-        "SELECT id FROM fuel_stations WHERE id = ?",
-        [fuel_station_id],
-        (err, row) => resolve(row || null)
-      );
-    });
-
-    if (!station) {
+    const resolvedStationId = await resolveStationId(db, fuel_station_id);
+    if (!resolvedStationId) {
       return NextResponse.json(
         { success: false, error: "Fuel station not found" },
         { status: 404 }
@@ -173,8 +165,8 @@ export async function PATCH(request) {
            SET stock_litres = ?, updated_at = ?
            WHERE fuel_station_id = ? AND fuel_type = ?`;
       const params = supportsLastRefilledAt
-        ? [stock_litres, updatedAt, updatedAt, fuel_station_id, fuel_type]
-        : [stock_litres, updatedAt, fuel_station_id, fuel_type];
+        ? [stock_litres, updatedAt, updatedAt, resolvedStationId, fuel_type]
+        : [stock_litres, updatedAt, resolvedStationId, fuel_type];
 
       db.run(sql, params, function (err) {
         if (err) reject(err);
@@ -183,10 +175,42 @@ export async function PATCH(request) {
     });
 
     if (result.changes === 0) {
-      return NextResponse.json(
-        { success: false, error: `Stock record for ${fuel_type} not found` },
-        { status: 404 }
-      );
+      // Create missing stock row, then retry update once.
+      await new Promise((resolve, reject) => {
+        const insertSql = supportsLastRefilledAt
+          ? `INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, last_refilled_at, updated_at)
+             VALUES (?, ?, 0, ?, ?)`
+          : `INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at)
+             VALUES (?, ?, 0, ?)`;
+        const params = supportsLastRefilledAt
+          ? [resolvedStationId, fuel_type, updatedAt, updatedAt]
+          : [resolvedStationId, fuel_type, updatedAt];
+        db.run(insertSql, params, (err) => (err ? reject(err) : resolve()));
+      });
+
+      const retry = await new Promise((resolve, reject) => {
+        const retrySql = supportsLastRefilledAt
+          ? `UPDATE fuel_station_stock
+             SET stock_litres = ?, last_refilled_at = ?, updated_at = ?
+             WHERE fuel_station_id = ? AND fuel_type = ?`
+          : `UPDATE fuel_station_stock
+             SET stock_litres = ?, updated_at = ?
+             WHERE fuel_station_id = ? AND fuel_type = ?`;
+        const retryParams = supportsLastRefilledAt
+          ? [stock_litres, updatedAt, updatedAt, resolvedStationId, fuel_type]
+          : [stock_litres, updatedAt, resolvedStationId, fuel_type];
+        db.run(retrySql, retryParams, function (err) {
+          if (err) reject(err);
+          else resolve({ changes: this.changes });
+        });
+      });
+
+      if (Number(retry.changes || 0) === 0) {
+        return NextResponse.json(
+          { success: false, error: `Stock record for ${fuel_type} not found` },
+          { status: 404 }
+        );
+      }
     }
 
     // Log in fuel station ledger
@@ -196,7 +220,7 @@ export async function PATCH(request) {
         status, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
-        fuel_station_id,
+        resolvedStationId,
         "stock_update",
         0,
         `Stock updated for ${fuel_type}: ${stock_litres} litres`,
@@ -251,16 +275,8 @@ export async function POST(request) {
     const db = getDB();
     const updatedAt = getLocalDateTimeString();
 
-    // Verify fuel station exists
-    const station = await new Promise((resolve) => {
-      db.get(
-        "SELECT id FROM fuel_stations WHERE id = ?",
-        [fuel_station_id],
-        (err, row) => resolve(row || null)
-      );
-    });
-
-    if (!station) {
+    const resolvedStationId = await resolveStationId(db, fuel_station_id);
+    if (!resolvedStationId) {
       return NextResponse.json(
         { success: false, error: "Fuel station not found" },
         { status: 404 }
@@ -272,7 +288,7 @@ export async function POST(request) {
       db.get(
         `SELECT stock_litres FROM fuel_station_stock
          WHERE fuel_station_id = ? AND fuel_type = ?`,
-        [fuel_station_id, fuel_type],
+        [resolvedStationId, fuel_type],
         (err, row) => resolve(row || null)
       );
     });
@@ -300,7 +316,7 @@ export async function POST(request) {
         `UPDATE fuel_station_stock 
          SET stock_litres = stock_litres - ?, updated_at = ?
          WHERE fuel_station_id = ? AND fuel_type = ?`,
-        [litres_picked_up, updatedAt, fuel_station_id, fuel_type],
+        [litres_picked_up, updatedAt, resolvedStationId, fuel_type],
         function (err) {
           if (err) reject(err);
           else resolve({ changes: this.changes });
