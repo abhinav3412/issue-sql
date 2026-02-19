@@ -1,6 +1,6 @@
 // Client-side authentication and authorization utilities
 
-export type UserRole = 'User' | 'Worker' | 'Admin' | 'Station';
+export type UserRole = 'User' | 'Worker' | 'Admin' | 'Station' | 'Fuel_Station';
 
 export interface AuthUser {
   id: number;
@@ -85,7 +85,7 @@ export function isAuthenticated(): boolean {
  * Check if user is fuel station
  */
 export function isFuelStation(): boolean {
-  return hasRole('Station');
+  return hasRole(['Station', 'Fuel_Station']);
 }
 
 /**
@@ -116,7 +116,7 @@ export function getUserFullName(): string {
   const user = getCurrentUser();
   if (!user) return '';
 
-  if (user.role === 'Station') {
+  if (user.role === 'Station' || user.role === 'Fuel_Station') {
     return user.station_name || `${user.first_name} ${user.last_name}`;
   }
 

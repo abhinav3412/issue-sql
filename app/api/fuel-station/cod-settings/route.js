@@ -22,12 +22,31 @@ function hasTableColumn(db, tableName, colName) {
   });
 }
 
+async function buildStationSelect(db) {
+  const hasStationName = await hasTableColumn(db, "fuel_stations", "station_name");
+  const hasCodEnabled = await hasTableColumn(db, "fuel_stations", "cod_enabled");
+  const hasCodCurrentBalance = await hasTableColumn(db, "fuel_stations", "cod_current_balance");
+  const hasCodBalanceLimit = await hasTableColumn(db, "fuel_stations", "cod_balance_limit");
+  const hasPlatformTrustFlag = await hasTableColumn(db, "fuel_stations", "platform_trust_flag");
+  const hasIsVerified = await hasTableColumn(db, "fuel_stations", "is_verified");
+
+  return [
+    "id",
+    hasStationName ? "station_name" : "NULL AS station_name",
+    hasCodEnabled ? "cod_enabled" : "1 AS cod_enabled",
+    hasCodCurrentBalance ? "cod_current_balance" : "0 AS cod_current_balance",
+    hasCodBalanceLimit ? "cod_balance_limit" : "50000 AS cod_balance_limit",
+    hasPlatformTrustFlag ? "platform_trust_flag" : "1 AS platform_trust_flag",
+    hasIsVerified ? "is_verified" : "0 AS is_verified",
+  ].join(", ");
+}
+
 async function findStationByIdOrUserId(db, idValue) {
+  const selectCols = await buildStationSelect(db);
   let station = await new Promise((resolve) => {
       db.get(
-        `SELECT 
-          id, station_name, cod_enabled, cod_current_balance, 
-          cod_balance_limit, platform_trust_flag, is_verified
+        `SELECT
+          ${selectCols}
        FROM fuel_stations
        WHERE id = ?`,
       [idValue],
@@ -40,9 +59,8 @@ async function findStationByIdOrUserId(db, idValue) {
     if (hasUserId) {
       station = await new Promise((resolve) => {
         db.get(
-          `SELECT 
-            id, station_name, cod_enabled, cod_current_balance, 
-            cod_balance_limit, platform_trust_flag, is_verified
+          `SELECT
+            ${selectCols}
            FROM fuel_stations
            WHERE user_id = ?`,
           [idValue],
@@ -57,13 +75,13 @@ async function findStationByIdOrUserId(db, idValue) {
 
 async function findStationByEmail(db, email) {
   if (!email) return null;
+  const selectCols = await buildStationSelect(db);
   const hasEmail = await hasTableColumn(db, "fuel_stations", "email");
   if (hasEmail) {
     const byStationEmail = await new Promise((resolve) => {
         db.get(
-        `SELECT 
-          id, station_name, cod_enabled, cod_current_balance, 
-          cod_balance_limit, platform_trust_flag, is_verified
+        `SELECT
+          ${selectCols}
          FROM fuel_stations
          WHERE email = ?`,
         [email],
@@ -79,8 +97,7 @@ async function findStationByEmail(db, email) {
   return new Promise((resolve) => {
     db.get(
       `SELECT
-        fs.id, fs.station_name, fs.cod_enabled, fs.cod_current_balance,
-        fs.cod_balance_limit, fs.platform_trust_flag, fs.is_verified
+        ${selectCols.replace(/\bid\b/g, "fs.id")}
        FROM fuel_stations fs
        JOIN users u ON fs.user_id = u.id
        WHERE u.email = ?
@@ -234,22 +251,26 @@ export async function GET(request) {
     const computedCurrentBalance = Number(pending_cod.total_pending || 0);
 
     // Keep fuel_stations.cod_current_balance in sync for legacy consumers.
-    await new Promise((resolve) => {
-      db.run(
-        `UPDATE fuel_stations
-         SET cod_current_balance = ?, updated_at = ?
-         WHERE id = ?`,
-        [computedCurrentBalance, getLocalDateTimeString(), station.id],
-        () => resolve()
-      );
-    });
+    const hasCodCurrentBalance = await hasTableColumn(db, "fuel_stations", "cod_current_balance");
+    if (hasCodCurrentBalance) {
+      const hasUpdatedAt = await hasTableColumn(db, "fuel_stations", "updated_at");
+      await new Promise((resolve) => {
+        const sql = hasUpdatedAt
+          ? `UPDATE fuel_stations SET cod_current_balance = ?, updated_at = ? WHERE id = ?`
+          : `UPDATE fuel_stations SET cod_current_balance = ? WHERE id = ?`;
+        const params = hasUpdatedAt
+          ? [computedCurrentBalance, getLocalDateTimeString(), station.id]
+          : [computedCurrentBalance, station.id];
+        db.run(sql, params, () => resolve());
+      });
+    }
 
     return NextResponse.json(
       {
         success: true,
         cod_settings: {
           station_id: station.id,
-          station_name: station.station_name,
+          station_name: station.station_name || `Station ${station.id}`,
           cod_enabled: flagEnabled(station.cod_enabled, false),
           is_verified: flagEnabled(station.is_verified, false),
           cod_current_balance: computedCurrentBalance,

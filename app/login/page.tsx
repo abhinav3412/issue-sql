@@ -51,10 +51,14 @@ export default function LoginPage() {
           localStorage.setItem("agf_user", JSON.stringify({
             id: data.id,
             role: data.role,
+            email: data.email || form.email,
             first_name: data.first_name || "User",
             last_name: data.last_name || "",
             phone_number: data.phone_number || "",
             driving_licence: data.driving_licence || "",
+            station_name: data.station_name || "",
+            is_verified: data.is_verified || false,
+            cod_enabled: data.cod_enabled || false,
           }));
           if (data.token) {
             localStorage.setItem("agf_token", data.token);
@@ -66,7 +70,7 @@ export default function LoginPage() {
         router.push("/admin");
       } else if (data.role === "Worker") {
         router.push("/worker");
-      } else if (data.role === "Station") {
+      } else if (data.role === "Station" || data.role === "Fuel_Station") {
         router.push("/fuel-station");
       } else {
         router.push("/user");
@@ -124,6 +128,16 @@ export default function LoginPage() {
                 <img className="login-role-avatar" src="/admin-avatar.png" alt="Admin" />
               </span>
               <span>Admin</span>
+            </button>
+            <button
+              type="button"
+              className={`login-role-btn ${role === "Station" ? "login-role-btn--active" : ""}`}
+              onClick={() => setRole("Station")}
+            >
+              <span className="login-role-icon">
+                <img className="login-role-avatar" src="/logo.ico" alt="Station" />
+              </span>
+              <span>Station</span>
             </button>
           </div>
         </div>

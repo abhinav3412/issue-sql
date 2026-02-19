@@ -85,6 +85,7 @@ export async function POST(request) {
     const db = getDB();
     await ensureAuthTables(db);
     const isWorker = role === "Worker";
+    const isStationRole = role === "Station" || role === "Fuel_Station";
     const isAdmin = role === "Admin";
 
     const table = isWorker ? "workers" : "users";
@@ -135,7 +136,7 @@ export async function POST(request) {
 
     // If role explicitly requests Station, map to linked fuel station.
     let stationInfo = null;
-    if (!isWorker && role === "Station") {
+    if (!isWorker && isStationRole) {
       stationInfo = await new Promise((resolve) => {
         db.get(
           "SELECT id, station_name, is_verified, cod_enabled FROM fuel_stations WHERE user_id = ?",
@@ -143,10 +144,14 @@ export async function POST(request) {
           (err, row) => resolve(row || null)
         );
       });
-      if (stationInfo) {
-        finalId = stationInfo.id;
-        finalRole = "Station";
+      if (!stationInfo) {
+        return NextResponse.json(
+          { error: "No fuel station profile found for this account." },
+          { status: 403 }
+        );
       }
+      finalId = stationInfo.id;
+      finalRole = "Station";
     }
 
     const token = generateToken({
@@ -160,6 +165,7 @@ export async function POST(request) {
         success: true,
         id: finalId,
         role: finalRole,
+        email: user.email,
         first_name: user.first_name,
         last_name: user.last_name,
         phone_number: user.phone_number || "",

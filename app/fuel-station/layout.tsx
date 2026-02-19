@@ -18,7 +18,7 @@ export default function FuelStationLayout({
 
   useEffect(() => {
     const currentUser = getCurrentUser();
-    if (!currentUser || currentUser.role !== 'Station') {
+    if (!currentUser || (currentUser.role !== 'Station' && currentUser.role !== 'Fuel_Station')) {
       router.push('/login');
       return;
     }
