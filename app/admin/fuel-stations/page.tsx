@@ -39,6 +39,15 @@ interface FuelStationDetail {
     recent_ledger: Array<any>;
 }
 
+function displayText(value: unknown, fallback = 'Not provided') {
+    if (value === null || value === undefined) return fallback;
+    const text = String(value).trim();
+    if (!text) return fallback;
+    const lowered = text.toLowerCase();
+    if (lowered === 'null' || lowered === 'undefined' || lowered === 'n/a') return fallback;
+    return text;
+}
+
 export default function FuelStationsPage() {
     const router = useRouter();
     const user = getCurrentUser();
@@ -208,11 +217,11 @@ export default function FuelStationsPage() {
                                         <td>{station.id}</td>
                                         <td style={{ fontWeight: 500 }}>{station.station_name || station.name}</td>
                                         <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {station.address}
+                                            {displayText(station.address)}
                                         </td>
                                         <td>
-                                            <div style={{ fontSize: '0.85rem' }}>{station.email}</div>
-                                            <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{station.phone_number}</div>
+                                            <div style={{ fontSize: '0.85rem' }}>{displayText(station.email)}</div>
+                                            <div style={{ fontSize: '0.8rem', opacity: 0.7 }}>{displayText(station.phone_number)}</div>
                                         </td>
                                         <td>{getStatusBadge(station.is_open)}</td>
                                         <td>{getVerifiedBadge(station.is_verified)}</td>
@@ -392,16 +401,16 @@ function ManageStationModal({ id, onClose }: { id: number; onClose: () => void }
                             </div>
                             <div className="admin-modal-row" style={{ marginBottom: '1rem' }}>
                                 <label>Email</label>
-                                <input type="text" value={station?.station.email || ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                                <input type="text" value={displayText(station?.station.email)} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
                             </div>
                             <div className="admin-modal-row" style={{ marginBottom: '1rem' }}>
                                 <label>Phone</label>
-                                <input type="text" value={station?.station.phone_number || ''} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                                <input type="text" value={displayText(station?.station.phone_number)} readOnly style={{ opacity: 0.7, cursor: 'not-allowed' }} />
                             </div>
                             <div className="admin-modal-row" style={{ marginBottom: '1.5rem' }}>
                                 <label>Address</label>
                                 <textarea
-                                    value={station?.station.address || ''}
+                                    value={displayText(station?.station.address)}
                                     readOnly
                                     rows={3}
                                     style={{ width: '100%', padding: '0.5rem 0.75rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: 'white', opacity: 0.7, cursor: 'not-allowed', resize: 'none' }}

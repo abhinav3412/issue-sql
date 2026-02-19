@@ -99,6 +99,15 @@ async function ensureFuelStationTables(db) {
   }
 }
 
+function normalizeText(value, fallback = "Not provided") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  if (!text) return fallback;
+  const lowered = text.toLowerCase();
+  if (lowered === "null" || lowered === "undefined" || lowered === "n/a") return fallback;
+  return text;
+}
+
 export async function GET(request) {
   const db = getDB();
   const { searchParams } = new URL(request.url);
@@ -147,6 +156,9 @@ export async function GET(request) {
           const normalized = (rows || []).map(station => ({
             ...station,
             station_name: station.station_name || station.name,
+            email: normalizeText(station.email),
+            phone_number: normalizeText(station.phone_number),
+            address: normalizeText(station.address),
             cod_enabled: station.cod_enabled !== undefined ? station.cod_enabled : station.cod_supported,
             petrol_stock: station.petrol_stock || 0,
             diesel_stock: station.diesel_stock || 0,

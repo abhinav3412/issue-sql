@@ -28,6 +28,15 @@ interface FuelStationDetail {
   recent_ledger: Array<any>;
 }
 
+function displayText(value: unknown, fallback = 'Not provided') {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  if (!text) return fallback;
+  const lowered = text.toLowerCase();
+  if (lowered === 'null' || lowered === 'undefined' || lowered === 'n/a') return fallback;
+  return text;
+}
+
 export default function FuelStationDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -195,7 +204,7 @@ export default function FuelStationDetailPage() {
               <label className="block text-sm font-medium text-gray-400 mb-1">Email</label>
               <input
                 type="text"
-                value={station?.station.email || ''}
+                value={displayText(station?.station.email)}
                 readOnly
                 className="w-full px-3 py-2 rounded-lg focus:outline-none border"
                 style={inputStyle}
@@ -206,7 +215,7 @@ export default function FuelStationDetailPage() {
               <label className="block text-sm font-medium text-gray-400 mb-1">Phone</label>
               <input
                 type="text"
-                value={station?.station.phone_number || ''}
+                value={displayText(station?.station.phone_number)}
                 readOnly
                 className="w-full px-3 py-2 rounded-lg focus:outline-none border"
                 style={inputStyle}
@@ -216,7 +225,7 @@ export default function FuelStationDetailPage() {
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1">Address</label>
               <textarea
-                value={station?.station.address || ''}
+                value={displayText(station?.station.address)}
                 readOnly
                 rows={3}
                 className="w-full px-3 py-2 rounded-lg focus:outline-none border resize-none"

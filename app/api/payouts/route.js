@@ -60,7 +60,7 @@ export async function GET(request) {
         SELECT 
           w.id, w.first_name, w.last_name, w.phone_number, w.service_type,
           COALESCE(SUM(s.worker_payout), 0) as lifetime_earnings,
-          COALESCE(p.total_paid, 0) as total_paid
+          COALESCE(MAX(p.total_paid), 0) as total_paid
         FROM workers w
         LEFT JOIN settlements s ON w.id = s.worker_id
         LEFT JOIN (

@@ -57,6 +57,15 @@ async function resolveStationRow(db, rawId) {
   });
 }
 
+function normalizeText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  if (!text) return fallback;
+  const lowered = text.toLowerCase();
+  if (lowered === "null" || lowered === "undefined" || lowered === "n/a") return fallback;
+  return text;
+}
+
 export async function GET(request, props) {
   const params = await props.params;
   const { id } = params;
@@ -77,7 +86,7 @@ export async function GET(request, props) {
 
     const station = await new Promise((resolve, reject) => {
       db.get(
-        `SELECT fs.*, u.email as linked_user_email
+        `SELECT fs.*, u.email as linked_user_email, u.phone_number as linked_user_phone
          FROM fuel_stations fs
          LEFT JOIN users u ON fs.user_id = u.id
          WHERE fs.id = ?`,
@@ -112,10 +121,17 @@ export async function GET(request, props) {
       );
     });
 
+    const normalizedStation = {
+      ...station,
+      email: normalizeText(station.email, normalizeText(station.linked_user_email, "Not provided")),
+      phone_number: normalizeText(station.phone_number, normalizeText(station.linked_user_phone, "Not provided")),
+      address: normalizeText(station.address, "Not provided"),
+    };
+
     return NextResponse.json(
       {
         success: true,
-        station: { ...station, stocks: stocksObj },
+        station: { ...normalizedStation, stocks: stocksObj },
         recent_ledger,
       },
       { status: 200 }
