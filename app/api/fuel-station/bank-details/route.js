@@ -33,15 +33,23 @@ function maskValue(value, keep = 4) {
 
 async function resolveFuelStationId(db, auth) {
   if (!auth) return null;
-  if (auth.role === "Station") {
-    return Number(auth.id);
-  }
-  if (auth.role === "Fuel_Station") {
-    const station = await new Promise((resolve) => {
-      db.get("SELECT id FROM fuel_stations WHERE user_id = ?", [auth.id], (err, row) => resolve(row || null));
+  const rawId = Number(auth.id);
+  if (!Number.isFinite(rawId)) return null;
+
+  // First try direct station id (works when token id is fuel_stations.id)
+  const direct = await new Promise((resolve) => {
+    db.get("SELECT id FROM fuel_stations WHERE id = ?", [rawId], (err, row) => resolve(row || null));
+  });
+  if (direct?.id) return Number(direct.id);
+
+  // Fallback: token id may actually be users.id
+  if (auth.role === "Station" || auth.role === "Fuel_Station") {
+    const byUser = await new Promise((resolve) => {
+      db.get("SELECT id FROM fuel_stations WHERE user_id = ?", [rawId], (err, row) => resolve(row || null));
     });
-    return station?.id ? Number(station.id) : null;
+    if (byUser?.id) return Number(byUser.id);
   }
+
   return null;
 }
 

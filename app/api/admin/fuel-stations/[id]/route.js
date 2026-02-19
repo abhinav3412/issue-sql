@@ -2,6 +2,30 @@ import { NextResponse } from "next/server";
 const { getDB } = require("../../../../../database/db");
 const bcrypt = require("bcryptjs");
 
+const isDuplicateColumnError = (err) =>
+    /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
+
+async function ensureFuelStationAdminColumns(db) {
+    const columns = [
+        "is_verified INTEGER DEFAULT 0",
+        "is_open INTEGER DEFAULT 1",
+        "cod_enabled INTEGER DEFAULT 1",
+        "cod_balance_limit INTEGER DEFAULT 50000",
+        "platform_trust_flag INTEGER DEFAULT 0",
+    ];
+
+    for (const column of columns) {
+        await new Promise((resolve) => {
+            db.run(`ALTER TABLE fuel_stations ADD COLUMN ${column}`, (err) => {
+                if (err && !isDuplicateColumnError(err)) {
+                    console.error(`Add fuel_stations.${column} failed:`, err);
+                }
+                resolve();
+            });
+        });
+    }
+}
+
 async function getTableColumns(db, tableName) {
     const rows = await new Promise((resolve) => {
         db.all(`PRAGMA table_info(${tableName})`, [], (err, r) => {
@@ -26,6 +50,8 @@ export async function GET(request, props) {
     const db = getDB();
 
     try {
+        await ensureFuelStationAdminColumns(db);
+
         // 1. Get Station Details
         const station = await new Promise((resolve, reject) => {
             db.get(
@@ -138,6 +164,8 @@ export async function PATCH(request, props) {
     const db = getDB();
 
     try {
+        await ensureFuelStationAdminColumns(db);
+
         const stationCols = await getTableColumns(db, "fuel_stations");
         // 1. Update station fields if any
         const filteredUpdates = [];
