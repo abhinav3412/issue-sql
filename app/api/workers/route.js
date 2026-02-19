@@ -90,19 +90,8 @@ export async function GET(request) {
       );
     });
 
-    // Auto-Unlock Logic: If worker is locked but now compliant, unlock them.
-    // We don't change status to 'Available' automatically, just remove the lock.
-    await new Promise((resolve) => {
-      db.run(
-        `UPDATE workers 
-         SET status_locked = 0 
-         WHERE status_locked = 1 
-         AND floater_cash < 1500 
-         AND (COALESCE(last_cash_collection_at, created_at) >= ?)`,
-        [sevenDaysAgo],
-        () => resolve()
-      );
-    });
+    // Do not auto-unlock status here.
+    // Lock removal must happen explicitly via admin actions.
 
     if (workerId) {
       const worker = await new Promise((resolve, reject) => {

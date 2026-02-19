@@ -65,10 +65,10 @@ export async function POST(request) {
             });
         }
 
-        // Clear floater cash and reset status_locked
+        // Clear floater cash and unlock (admin action)
         await new Promise((resolve, reject) => {
             db.run(
-                "UPDATE workers SET floater_cash = 0, last_cash_collection_at = ?, status_locked = 0 WHERE id = ?",
+                "UPDATE workers SET floater_cash = 0, last_cash_collection_at = ?, status_locked = 0, lock_reason = NULL WHERE id = ?",
                 [now, worker_id],
                 function (err) {
                     if (err) reject(err);
