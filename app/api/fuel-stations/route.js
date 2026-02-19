@@ -2,6 +2,83 @@ import { NextResponse } from 'next/server';
 const { getDB } = require('../../../database/db');
 const bcrypt = require('bcryptjs');
 
+function isDuplicateColumnError(err) {
+  return /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
+}
+
+async function ensureFuelStationTables(db) {
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS fuel_stations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER UNIQUE,
+        name VARCHAR(255),
+        station_name VARCHAR(255),
+        email VARCHAR(255) UNIQUE,
+        phone_number VARCHAR(20),
+        address TEXT,
+        latitude REAL,
+        longitude REAL,
+        cod_supported INTEGER DEFAULT 1,
+        cod_enabled INTEGER DEFAULT 1,
+        is_open INTEGER DEFAULT 1,
+        is_verified INTEGER DEFAULT 1,
+        total_earnings REAL DEFAULT 0,
+        pending_payout REAL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS fuel_station_stock (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fuel_station_id INTEGER NOT NULL,
+        fuel_type VARCHAR(50) NOT NULL,
+        stock_litres REAL DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(fuel_station_id, fuel_type)
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS fuel_station_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fuel_station_id INTEGER NOT NULL,
+        amount REAL DEFAULT 0,
+        status VARCHAR(30) DEFAULT 'pending',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+
+  const cols = [
+    "name VARCHAR(255)",
+    "station_name VARCHAR(255)",
+    "cod_supported INTEGER DEFAULT 1",
+    "cod_enabled INTEGER DEFAULT 1",
+    "total_earnings REAL DEFAULT 0",
+    "pending_payout REAL DEFAULT 0",
+  ];
+  for (const col of cols) {
+    await new Promise((resolve) => {
+      db.run(`ALTER TABLE fuel_stations ADD COLUMN ${col}`, (err) => {
+        if (err && !isDuplicateColumnError(err)) {
+          console.error(`Add fuel_stations.${col.split(" ")[0]} failed:`, err);
+        }
+        resolve();
+      });
+    });
+  }
+}
+
 export async function GET(request) {
   const db = getDB();
   const { searchParams } = new URL(request.url);
@@ -10,6 +87,7 @@ export async function GET(request) {
   const id = searchParams.get('id');
 
   try {
+    await ensureFuelStationTables(db);
     console.log("GET /api/fuel-stations: Request received");
     const stations = await new Promise((resolve, reject) => {
       let query = `
@@ -97,6 +175,7 @@ export async function POST(request) {
   const db = getDB();
 
   try {
+    await ensureFuelStationTables(db);
     console.log("POST /api/fuel-stations: Creating station", station_name);
 
     // 1. First create/get user record for the station
@@ -184,6 +263,7 @@ export async function PATCH(request) {
 
   const db = getDB();
   try {
+    await ensureFuelStationTables(db);
     await new Promise((resolve, reject) => {
       db.run(
         "UPDATE fuel_stations SET cod_supported = ? WHERE id = ?",
@@ -208,6 +288,7 @@ export async function DELETE(request) {
 
   const db = getDB();
   try {
+    await ensureFuelStationTables(db);
     await new Promise((resolve, reject) => {
       db.run("DELETE FROM fuel_stations WHERE id = ?", [id], (err) => {
         if (err) reject(err);

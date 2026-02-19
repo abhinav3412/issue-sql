@@ -1,82 +1,62 @@
 import { NextResponse } from "next/server";
 const { getDB, getLocalDateTimeString } = require("../../../database/db");
 
+function isDuplicateColumnError(err) {
+  return /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
+}
+
+async function ensureWorkersSchema(db) {
+  await new Promise((resolve, reject) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS workers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100) NOT NULL,
+        last_name VARCHAR(100) NOT NULL,
+        phone_number VARCHAR(20),
+        status VARCHAR(20) DEFAULT 'Available',
+        service_type VARCHAR(50),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      (err) => (err ? reject(err) : resolve())
+    );
+  });
+
+  const cols = [
+    "service_type VARCHAR(50)",
+    "latitude REAL",
+    "longitude REAL",
+    "verified INTEGER DEFAULT 0",
+    "status_locked INTEGER DEFAULT 0",
+    "floater_cash REAL DEFAULT 0.0",
+    "last_cash_collection_at DATETIME",
+    "lock_reason TEXT",
+    "license_photo TEXT",
+    "self_photo TEXT",
+    "docs_submitted_at DATETIME",
+  ];
+
+  for (const col of cols) {
+    await new Promise((resolve) => {
+      db.run(`ALTER TABLE workers ADD COLUMN ${col}`, (err) => {
+        if (err && !isDuplicateColumnError(err)) {
+          console.error(`Add workers.${col.split(" ")[0]} failed:`, err);
+        }
+        resolve();
+      });
+    });
+  }
+}
+
 /** Returns active workers (Available or Busy) for the user dashboard. */
 export async function GET(request) {
   try {
     const url = new URL(request.url);
     const workerId = url.searchParams.get("id");
     const db = getDB();
-
-    // Ensure optional location columns exist (ignore if already present).
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN latitude REAL", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.latitude failed:", err);
-        }
-        resolve();
-      });
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN longitude REAL", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.longitude failed:", err);
-        }
-        resolve();
-      });
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN verified INTEGER DEFAULT 0", (err) => {
-        if (err && !/duplicate column name|already exists/i.test(err.message)) {
-          console.error("Add workers.verified failed:", err);
-        }
-        resolve();
-      });
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN status_locked INTEGER DEFAULT 0", (err) => {
-        if (err && !/duplicate column name|already exists/i.test(err.message)) {
-          console.error("Add workers.status_locked failed:", err);
-        }
-        resolve();
-      });
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN floater_cash REAL DEFAULT 0.0", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.floater_cash failed:", err);
-        }
-        resolve();
-      });
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN last_cash_collection_at DATETIME", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.last_cash_collection_at failed:", err);
-        }
-        resolve();
-      });
-    });
-
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN lock_reason TEXT", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.lock_reason failed:", err);
-        }
-        resolve();
-      });
-    });
-
-    // --- NEW: Document Verification Schema ---
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN license_photo TEXT", (err) => resolve());
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN self_photo TEXT", (err) => resolve());
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN docs_submitted_at DATETIME", (err) => resolve());
-    });
+    await ensureWorkersSchema(db);
 
     // --- NEW: 30-Minute Auto-Verification Logic (FOR TESTING) ---
     // If docs were submitted > 24 hours ago, auto-verify the worker.
@@ -162,23 +142,7 @@ export async function PATCH(request) {
     }
 
     const db = getDB();
-
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN latitude REAL", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.latitude failed:", err);
-        }
-        resolve();
-      });
-    });
-    await new Promise((resolve) => {
-      db.run("ALTER TABLE workers ADD COLUMN longitude REAL", (err) => {
-        if (err && !/duplicate column name/i.test(err.message)) {
-          console.error("Add workers.longitude failed:", err);
-        }
-        resolve();
-      });
-    });
+    await ensureWorkersSchema(db);
 
     // Fetch current worker state to check for lock
     const currentWorker = await new Promise((resolve, reject) => {
