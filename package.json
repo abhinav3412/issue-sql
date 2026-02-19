@@ -1,0 +1,49 @@
+{
+  "name": "next-login-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "setup": "node database/setup.js && node database/seed-admin.js",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.1.0",
+    "@capacitor/cli": "^8.1.0",
+    "@capacitor/core": "^8.1.0",
+    "@capacitor/ios": "^8.1.0",
+    "bcryptjs": "^2.4.3",
+    "framer-motion": "^12.29.2",
+    "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
+    "motion": "^12.29.2",
+    "mysql2": "^3.6.5",
+    "next": "^16.1.6",
+    "nodemailer": "^8.0.1",
+    "pg": "^8.11.3",
+    "razorpay": "^2.9.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-leaflet": "^5.0.0",
+    "recharts": "^2.15.4",
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/leaflet": "^1.9.21",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "eslint": "latest",
+    "eslint-config-next": "latest",
+    "typescript": "latest"
+  }
+}

@@ -1,0 +1,1403 @@
+AGF FULL PROJECT DESCRIPTION - DETAILED API LOGIC
+Generated on: 2026-02-17 23.30.47
+Project root: C:/Users/abhin/Desktop/AGF100%/PETROL18_02
+
+Scope: app/api route handlers only. This file documents method-level behavior signals from source code.
+
+Total API route files: 50
+
+============================================================
+Route: /api/admin/cod-settings/route.js
+File : app/api/admin/cod-settings/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): cod_settings, SET, error, COD
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !row
+  SQL/query patterns:
+  - SELECT * FROM cod_settings WHERE id = 1", (err, r) => {
+  Response status codes seen: 500
+  Behavior summary: financial-settlement-logic
+
+  Method: PUT
+  Input / guard conditions:
+  - [cod_limit, trust_threshold, max_failures, disable_days].some((v
+  SQL/query patterns:
+  - INSERT INTO cod_settings (id, cod_limit, trust_threshold, max_failures, disable_days) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET cod_limit = excluded.cod_limit, trust_threshold = excluded.trust_threshold, max_failures = ex
+  - update error:", err)
+  - update COD settings" }, { status: 500 })
+  Response status codes seen: 400, 500
+  Behavior summary: creates-records, updates-records, financial-settlement-logic
+
+============================================================
+Route: /api/admin/cod-users/route.js
+File : app/api/admin/cod-users/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, fuel_stations, error, user
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - SELECT id, email, first_name, last_name, trust_score, cod_success_count, cod_failure_count, cod_last_failure_reason, cod_disabled, cod_disabled_until
+  - SELECT 1 FROM fuel_stations fs WHERE fs.user_id = users.id
+  Response status codes seen: 500
+  Behavior summary: financial-settlement-logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !user_id
+  - cod_disabled !== undefined
+  - !cod_disabled
+  - fields.length === 0
+  - !result.changes
+  SQL/query patterns:
+  - UPDATE users
+  - SELECT 1 FROM fuel_stations fs WHERE fs.user_id = users.id
+  - update error:", err)
+  - update user" }, { status: 500 })
+  Response status codes seen: 400, 404, 500
+  Behavior summary: updates-records, financial-settlement-logic
+
+============================================================
+Route: /api/admin/fuel-station-payouts/route.js
+File : app/api/admin/fuel-station-payouts/route.js
+Auth signals: requireAdmin
+DB module imported: yes
+Tables touched (detected): fuel_station_ledger, fuel_stations, ledger
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !auth
+  - fuel_station_id
+  - status
+  SQL/query patterns:
+  - SELECT l.id, l.fuel_station_id, l.transaction_type, l.amount,
+  Response status codes seen: 200, 500
+  Behavior summary: financial-settlement-logic
+
+  Method: POST
+  Input / guard conditions:
+  - !auth
+  - !fuel_station_id || !Array.isArray(ledger_ids
+  - !amountToSettle || amountToSettle <= 0
+  SQL/query patterns:
+  - SELECT SUM(amount) as total, COUNT(*) as count FROM fuel_station_ledger
+  - Update ledger entries to 'settled'
+  - UPDATE fuel_station_ledger
+  - UPDATE fuel_stations
+  - INSERT INTO fuel_station_ledger
+  Response status codes seen: 400, 200, 500
+  Behavior summary: creates-records, updates-records, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/fuel-station-payouts/settle-all/route.js
+File : app/api/admin/fuel-station-payouts/settle-all/route.js
+Auth signals: requireAdmin
+DB module imported: yes
+Tables touched (detected): fuel_station_ledger, station, bank, fuel_station_bank_details, fuel_stations
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !auth
+  - requestedStationId
+  - !eligibleStations.length
+  - settled.status === "success"
+  SQL/query patterns:
+  - SELECT fs.id, COALESCE(fs.station_name, fs.name) AS station_name,
+  - SELECT 1
+  Response status codes seen: none-detected
+  Behavior summary: payment-integration-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/fuel-stations/[id]/route.js
+File : app/api/admin/fuel-stations/[id]/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): fuel_stations, users, fuel_station_stock, fuel_station_ledger, station
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !id
+  - !station
+  SQL/query patterns:
+  - SELECT fs.*,
+  - SELECT fuel_type, stock_litres FROM fuel_station_stock WHERE fuel_station_id = ?
+  - SELECT * FROM fuel_station_ledger
+  Response status codes seen: 400, 404, 200, 500
+  Behavior summary: read/response logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !id
+  - updates.length > 0
+  - new_password
+  - station && station.user_id
+  SQL/query patterns:
+  - Update station fields if any
+  - UPDATE fuel_stations SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  - SELECT user_id FROM fuel_stations WHERE id = ?
+  - UPDATE users SET password = ? WHERE id = ?
+  - Update station error:", error)
+  Response status codes seen: 400, 200, 500
+  Behavior summary: updates-records, location-or-distance-logic, financial-settlement-logic
+
+  Method: DELETE
+  Input / guard conditions:
+  - !id
+  SQL/query patterns:
+  - DELETE FROM fuel_stations WHERE id = ?
+  Response status codes seen: 400, 200, 500
+  Behavior summary: deletes-records
+
+============================================================
+Route: /api/admin/payments/route.js
+File : app/api/admin/payments/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): payments, service_requests, users, payment
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - provider
+  - status
+  - userId
+  - serviceRequestId
+  - conditions.length > 0
+  - countConditions.length > 0
+  SQL/query patterns:
+  - SELECT p.*,
+  - SELECT COUNT(*) as count FROM payments p LEFT JOIN service_requests sr ON p.service_request_id = sr.id"
+  Response status codes seen: 500
+  Behavior summary: read/response logic
+
+  Method: POST
+  Input / guard conditions:
+  - !payment_id
+  - !status || !["captured", "failed", "refunded", "reconciled"].includes(status
+  - err && !/already exists/i.test(err.message
+  SQL/query patterns:
+  - Update payment status
+  - UPDATE payments SET status = ?, updated_at = ? WHERE id = ?",
+  - Update payment error:", err)
+  - SELECT COUNT(*) as total_payments,
+  - SELECT provider,
+  - SELECT status,
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records, payment-integration-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/payments/summary/route.js
+File : app/api/admin/payments/summary/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): payments
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - err && !/already exists/i.test(err.message
+  SQL/query patterns:
+  - SELECT COUNT(*) as total_payments,
+  - SELECT provider,
+  - SELECT status,
+  - SELECT DATE(created_at) as date,
+  Response status codes seen: 500
+  Behavior summary: payment-integration-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/payouts/settle-all/route.js
+File : app/api/admin/payouts/settle-all/route.js
+Auth signals: requireAdmin
+DB module imported: yes
+Tables touched (detected): workers, worker_bank_details, worker, payout_logs, worker_payouts
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !auth
+  - eligibleWorkers.length === 0
+  - !contact_id
+  - !fund_account_id
+  - !isValidIfsc(normalizedIfsc
+  - !/^/d{9,18}$/.test(normalizedAccountNumber
+  SQL/query patterns:
+  - SELECT w.id, w.first_name, w.last_name, w.email, w.phone_number, w.pending_balance,
+  - UPDATE worker_bank_details SET razorpay_contact_id = ? WHERE worker_id = ?", [contact_id, worker.id], () => resolve())
+  - UPDATE worker_bank_details
+  - UPDATE worker_bank_details SET razorpay_fund_account_id = ? WHERE worker_id = ?", [fund_account_id, worker.id], () => resolve())
+  - update worker status
+  - INSERT INTO payout_logs (worker_id, payout_id, amount, status) VALUES (?, ?, ?, ?)",
+  - INSERT INTO worker_payouts (worker_id, amount, reference_id, notes, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+  - UPDATE workers SET pending_balance = 0, last_payout_at = CURRENT_TIMESTAMP WHERE id = ?", [worker.id])
+  Response status codes seen: none-detected
+  Behavior summary: creates-records, updates-records, payment-integration-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/platform-settings/route.js
+File : app/api/admin/platform-settings/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): platform_settings, error, platform
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !row
+  SQL/query patterns:
+  - SELECT * FROM platform_settings WHERE id = 1", (err, r) => {
+  Response status codes seen: 500
+  Behavior summary: location-or-distance-logic
+
+  Method: PUT
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - UPDATE platform_settings SET
+  - update error:", err)
+  - update platform settings" }, { status: 500 })
+  Response status codes seen: 500
+  Behavior summary: updates-records, location-or-distance-logic
+
+============================================================
+Route: /api/admin/service-prices/route.js
+File : app/api/admin/service-prices/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): service_prices, error
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - SELECT * FROM service_prices", (err, rows) => {
+  Response status codes seen: 500
+  Behavior summary: read/response logic
+
+  Method: POST
+  Input / guard conditions:
+  - !Array.isArray(prices
+  SQL/query patterns:
+  - update error:", err)
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records
+
+============================================================
+Route: /api/admin/settlements/route.js
+File : app/api/admin/settlements/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): settlements, workers, fuel_stations, service_requests, settlement
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - workerId
+  - fuelStationId
+  - status
+  - conditions.length > 0
+  - countConditions.length > 0
+  SQL/query patterns:
+  - SELECT s.*,
+  - SELECT COUNT(*) as count FROM settlements s"
+  Response status codes seen: 500
+  Behavior summary: financial-settlement-logic
+
+  Method: POST
+  Input / guard conditions:
+  - !settlement_id
+  - err && !/already exists/i.test(err.message
+  SQL/query patterns:
+  - Update settlement status
+  - UPDATE settlements SET status = 'reconciled', notes = ?, updated_at = ? WHERE id = ?",
+  - Update settlement error:", err)
+  - SELECT COUNT(*) as total_settlements,
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/settlements/summary/route.js
+File : app/api/admin/settlements/summary/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): settlements, workers, fuel_stations
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - err && !/already exists/i.test(err.message
+  SQL/query patterns:
+  - SELECT COUNT(*) as total_settlements,
+  - SELECT w.id,
+  - SELECT fs.id,
+  Response status codes seen: 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/stats/route.js
+File : app/api/admin/stats/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, fuel_stations, workers, service_requests, activity_log
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - err && !/duplicate column name/i.test(err.message
+  - !row?.status
+  SQL/query patterns:
+  - SELECT COUNT(*) as count
+  - SELECT 1 FROM fuel_stations fs WHERE fs.user_id = users.id
+  - SELECT COUNT(*) as count FROM workers", [], (err, row) => {
+  - SELECT COUNT(*) as count FROM workers WHERE status IN ('Available', 'Busy')", [], (err, row) => {
+  - SELECT id, email, first_name, last_name, created_at
+  - SELECT id, first_name, last_name, status, created_at FROM workers WHERE DATE(created_at) = ? ORDER BY created_at DESC LIMIT 50",
+  - SELECT id, first_name, last_name, status, created_at FROM workers ORDER BY created_at DESC LIMIT 10", [], (err, rows) => {
+  - SELECT id, first_name, last_name, status, latitude, longitude, service_type FROM workers WHERE status IN ('Available', 'Busy') ORDER BY id DESC LIMIT 10",
+  Response status codes seen: 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/users/[id]/route.js
+File : app/api/admin/users/[id]/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, activity_log, error, user
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: PATCH
+  Input / guard conditions:
+  - isNaN(id
+  - !first_name || !last_name || !email || !phone_number || role == null
+  - !allowedRoles.includes(role
+  - id === 1 && role !== "Admin"
+  - !existing
+  - new_password != null && String(new_password
+  - existing.first_name !== first_name || existing.last_name !== last_name
+  - existing.email !== email
+  SQL/query patterns:
+  - SELECT first_name, last_name, email, phone_number, role FROM users WHERE id = ?",
+  - UPDATE users SET first_name = ?, last_name = ?, email = ?, phone_number = ?, role = ?, password = ?, updated_at = datetime('now') WHERE id = ?",
+  - UPDATE users SET first_name = ?, last_name = ?, email = ?, phone_number = ?, role = ?, updated_at = datetime('now') WHERE id = ?",
+  - INSERT INTO activity_log (type, message, entity_type, entity_id, created_at) VALUES (?, ?, 'user', ?, ?)",
+  - update error:", err)
+  - update user" }, { status: 500 })
+  Response status codes seen: 400, 403, 404, 409, 500
+  Behavior summary: creates-records, updates-records
+
+  Method: DELETE
+  Input / guard conditions:
+  - isNaN(id
+  - id === 1
+  - !user
+  SQL/query patterns:
+  - SELECT id, first_name, last_name FROM users WHERE id = ?", [id], (err, row) => {
+  - INSERT INTO activity_log (type, message, entity_type, entity_id, created_at) VALUES (?, ?, 'user', ?, ?)",
+  - DELETE FROM users WHERE id = ?", [id], function (err) {
+  Response status codes seen: 400, 403, 404, 500
+  Behavior summary: creates-records, deletes-records
+
+============================================================
+Route: /api/admin/users/route.js
+File : app/api/admin/users/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, fuel_stations
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - SELECT id, email, first_name, last_name, phone_number, role, created_at
+  - SELECT 1 FROM fuel_stations fs WHERE fs.user_id = users.id
+  Response status codes seen: 500
+  Behavior summary: read/response logic
+
+============================================================
+Route: /api/admin/workers/[id]/bank-details/route.js
+File : app/api/admin/workers/[id]/bank-details/route.js
+Auth signals: requireAdmin
+DB module imported: yes
+Tables touched (detected): worker_bank_details
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !auth
+  - !bankDetails
+  SQL/query patterns:
+  - SELECT * FROM worker_bank_details WHERE worker_id = ?",
+  Response status codes seen: none-detected
+  Behavior summary: financial-settlement-logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !auth
+  - ![0, 1, 2].includes(status
+  SQL/query patterns:
+  - UPDATE worker_bank_details SET is_bank_verified = ?, rejection_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE worker_id = ?",
+  Response status codes seen: none-detected
+  Behavior summary: updates-records
+
+============================================================
+Route: /api/admin/workers/[id]/reviews/route.js
+File : app/api/admin/workers/[id]/reviews/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): service_requests
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !id
+  SQL/query patterns:
+  - SELECT id, rating, review_comment, completed_at FROM service_requests WHERE assigned_worker = ? AND rating IS NOT NULL ORDER BY completed_at DESC",
+  Response status codes seen: 400, 500
+  Behavior summary: read/response logic
+
+============================================================
+Route: /api/admin/workers/[id]/route.js
+File : app/api/admin/workers/[id]/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): workers, activity_log, error, worker
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - isNaN(id
+  - !worker
+  SQL/query patterns:
+  - SELECT id, email, first_name, last_name, phone_number, status, status_locked, lock_reason, verified, floater_cash, last_cash_collection_at, license_photo, self_photo, created_at FROM workers WHERE id = ?",
+  Response status codes seen: 400, 404, 500
+  Behavior summary: read/response logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - isNaN(id
+  - !first_name || !last_name || !email || !phone_number || status == null
+  - !ALLOWED_STATUSES.includes(status
+  - err && !/duplicate column name/i.test(err.message
+  - !existing
+  - status !== existing.status
+  - status_locked !== undefined
+  - new_password != null && String(new_password
+  SQL/query patterns:
+  - UPDATE workers SET license_photo = NULL, self_photo = NULL, docs_submitted_at = NULL, verified = 0, updated_at = datetime('now') WHERE id = ?",
+  - SELECT first_name, last_name FROM workers WHERE id = ?", [id], (err, row) => resolve(row))
+  - INSERT INTO activity_log (type, message, entity_type, entity_id, created_at) VALUES (?, ?, 'worker', ?, ?)",
+  - SELECT first_name, last_name, email, phone_number, status, status_locked, verified FROM workers WHERE id = ?",
+  - UPDATE workers SET first_name = ?, last_name = ?, email = ?, phone_number = ?, status = ?, status_locked = ?, verified = ?, password = ?, updated_at = datetime('now')"
+  - UPDATE workers SET first_name = ?, last_name = ?, email = ?, phone_number = ?, status = ?, status_locked = ?, verified = ?, updated_at = datetime('now')"
+  - update error:", err)
+  - update worker" }, { status: 500 })
+  Response status codes seen: 400, 404, 409, 500
+  Behavior summary: creates-records, updates-records
+
+  Method: DELETE
+  Input / guard conditions:
+  - isNaN(id
+  - err && !/duplicate column name/i.test(err.message
+  - !worker
+  SQL/query patterns:
+  - SELECT id, first_name, last_name FROM workers WHERE id = ?", [id], (err, row) => {
+  - INSERT INTO activity_log (type, message, entity_type, entity_id, created_at) VALUES (?, ?, 'worker', ?, ?)",
+  - DELETE FROM workers WHERE id = ?", [id], function (err) {
+  Response status codes seen: 400, 404, 500
+  Behavior summary: creates-records, deletes-records
+
+============================================================
+Route: /api/admin/workers/collect-cash/route.js
+File : app/api/admin/workers/collect-cash/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): workers, settlements, activity_log, worker
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !worker_id
+  - floaterCashAmount > 0
+  - err && !/already exists/i.test(err.message
+  SQL/query patterns:
+  - SELECT floater_cash FROM workers WHERE id = ?",
+  - INSERT INTO settlements (
+  - UPDATE workers SET floater_cash = 0, last_cash_collection_at = ?, status_locked = 0 WHERE id = ?",
+  - INSERT INTO activity_log (type, message, entity_type, entity_id, created_at) VALUES (?, ?, 'worker', ?, ?)",
+  Response status codes seen: 400, 500
+  Behavior summary: creates-records, updates-records, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/admin/workers/route.js
+File : app/api/admin/workers/route.js
+Auth signals: requireAdmin
+DB module imported: yes
+Tables touched (detected): service_requests, workers, worker_bank_details
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - SELECT w.*,
+  - SELECT AVG(rating) FROM service_requests WHERE assigned_worker = w.id AND rating IS NOT NULL) as avg_rating
+  Response status codes seen: 500
+  Behavior summary: read/response logic
+
+============================================================
+Route: /api/assign-fuel-station/route.js
+File : app/api/assign-fuel-station/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): worker_station_cache, fuel_stations, fuel_station_assignments, service, service_requests, failed
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !worker_lat || !worker_lng
+  - !worker_id
+  - !service_request_id
+  - worker_lat === null || worker_lat === undefined || worker_lng === null || worker_lng === undefined
+  - !selection.success
+  SQL/query patterns:
+  - SELECT * FROM worker_station_cache
+  - SELECT * FROM fuel_stations WHERE id = ?",
+  - UPDATE worker_station_cache
+  - Select fuel station
+  - INSERT INTO fuel_station_assignments (
+  - INSERT INTO worker_station_cache (
+  - Update service request with fuel station
+  - UPDATE service_requests
+  Response status codes seen: 400, 404, 500
+  Behavior summary: creates-records, updates-records, location-or-distance-logic, financial-settlement-logic
+
+  Method: GET
+  Input / guard conditions:
+  - !serviceRequestId
+  - !assignment
+  - err && !/already exists/i.test(err.message
+  SQL/query patterns:
+  - SELECT a.*, fs.name, fs.latitude AS lat, fs.longitude AS lng, fs.cod_supported
+  Response status codes seen: 400, 404, 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/auth/fuel-station-signup/route.js
+File : app/api/auth/fuel-station-signup/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, fuel_stations, fuel_station_stock, activity_log
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - INSERT INTO users (email, password, first_name, last_name, phone_number, role, created_at, updated_at)
+  - INSERT INTO fuel_stations (
+  - INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, created_at, updated_at)
+  - INSERT INTO activity_log (type, message, entity_type, entity_id, created_at)
+  Response status codes seen: 400, 201, 409, 500
+  Behavior summary: creates-records, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/auth/login/route.js
+File : app/api/auth/login/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): workers, fuel_stations, users, activity_log
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !email || !password || !role
+  - fuelStationUser
+  - user && role === "Admin" && user.role !== "Admin"
+  - !user
+  - !passwordMatch
+  SQL/query patterns:
+  - SELECT id, email, password, first_name, last_name, phone_number, status FROM workers WHERE email = ?",
+  - SELECT fs.id as fs_id, u.id, u.password, u.email, u.first_name, u.last_name, u.phone_number, u.role,
+  - SELECT id, email, password, first_name, last_name, phone_number, role FROM users WHERE email = ?",
+  - INSERT INTO activity_log (type, message, entity_type, entity_id) VALUES (?, ?, ?, ?)
+  Response status codes seen: 400, 403, 401, 200, 500
+  Behavior summary: creates-records, financial-settlement-logic
+
+============================================================
+Route: /api/connectivity-heat/route.js
+File : app/api/connectivity-heat/route.js
+Auth signals: none-detected
+DB module imported: no
+Tables touched (detected): connectivity_reports
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - SELECT lat, lng, severity
+  Response status codes seen: 500, 200
+  Behavior summary: location-or-distance-logic
+
+============================================================
+Route: /api/connectivity-reports/route.js
+File : app/api/connectivity-reports/route.js
+Auth signals: none-detected
+DB module imported: no
+Tables touched (detected): connectivity_reports
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !body
+  - typeof lat !== "number" || typeof lng !== "number"
+  - severity !== "weak" && severity !== "none"
+  SQL/query patterns:
+  - INSERT INTO connectivity_reports
+  Response status codes seen: 400, 500, 201
+  Behavior summary: creates-records, location-or-distance-logic
+
+============================================================
+Route: /api/connectivity-zones/route.js
+File : app/api/connectivity-zones/route.js
+Auth signals: none-detected
+DB module imported: no
+Tables touched (detected): connectivity_reports
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - SELECT lat, lng, severity
+  Response status codes seen: 500, 200
+  Behavior summary: location-or-distance-logic
+
+============================================================
+Route: /api/feedback/route.js
+File : app/api/feedback/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): the, service_requests, workers
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !request_id || !rating
+  - recentRatings.length >= 10
+  SQL/query patterns:
+  - Update the request with rating
+  - UPDATE service_requests SET rating = ?, review_comment = ? WHERE id = ?",
+  - SELECT assigned_worker FROM service_requests WHERE id = ?",
+  - SELECT rating FROM service_requests WHERE assigned_worker = ? AND status = 'Completed' AND rating IS NOT NULL ORDER BY completed_at DESC LIMIT 10",
+  - UPDATE workers SET status = 'Offline', status_locked = 1, lock_reason = 'Low Rating' WHERE id = ?",
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records
+
+============================================================
+Route: /api/forgot-password/route.js
+File : app/api/forgot-password/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, password_resets, your
+Calls external URLs: http://localhost:3000
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !email
+  SQL/query patterns:
+  - SELECT id, email FROM users WHERE email = ?", [email], (err, row) => {
+  - INSERT INTO password_resets (user_id, token, created_at) VALUES (?, ?, ?)",
+  Response status codes seen: 400, 500
+  Behavior summary: creates-records
+
+============================================================
+Route: /api/fuel-prices/route.ts
+File : app/api/fuel-prices/route.ts
+Auth signals: authorization-header-usage
+DB module imported: yes
+Tables touched (detected): platform_settings
+Calls external URLs: none
+Internal fetch usage: yes
+
+  Method: GET
+  Input / guard conditions:
+  - process.env.FUEL_PRICE_API_URL
+  SQL/query patterns:
+  - SELECT is_raining FROM platform_settings WHERE id = 1", [], (err: any, row: any) => {
+  Response status codes seen: 500
+  Behavior summary: location-or-distance-logic
+
+============================================================
+Route: /api/fuel-station/bank-details/route.js
+File : app/api/fuel-station/bank-details/route.js
+Auth signals: requireAuth
+DB module imported: yes
+Tables touched (detected): fuel_stations, fuel_station_bank_details, fuel
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !auth
+  - !fuelStationId
+  - !bankDetails
+  SQL/query patterns:
+  - SELECT account_holder_name, account_number, ifsc_code, bank_name, updated_at FROM fuel_station_bank_details WHERE fuel_station_id = ?",
+  - Update fuel station bank details */
+  Response status codes seen: none-detected
+  Behavior summary: updates-records, financial-settlement-logic
+
+  Method: POST
+  Input / guard conditions:
+  - !auth
+  - !fuelStationId
+  - !account_holder_name || !account_number || !ifsc_code || !bank_name
+  - !/^/d{9,18}$/.test(normalizedAccount
+  - !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(normalizedIfsc
+  SQL/query patterns:
+  - SELECT id FROM fuel_station_bank_details WHERE fuel_station_id = ?", [fuelStationId], (err, row) =>
+  - UPDATE fuel_station_bank_details
+  - INSERT INTO fuel_station_bank_details
+  Response status codes seen: none-detected
+  Behavior summary: creates-records, updates-records, payment-integration-logic, financial-settlement-logic
+
+============================================================
+Route: /api/fuel-station/cod-settings/route.js
+File : app/api/fuel-station/cod-settings/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): fuel_stations, service_requests, COD, query
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !fuel_station_id
+  - !station
+  SQL/query patterns:
+  - SELECT id, station_name, cod_enabled, cod_current_balance,
+  - SELECT COUNT(*) as count,
+  - UPDATE fuel_stations
+  - Update COD settings
+  Response status codes seen: 400, 404, 200, 500
+  Behavior summary: updates-records, location-or-distance-logic, financial-settlement-logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !fuel_station_id
+  - !station
+  - cod_enabled !== undefined
+  - cod_balance_limit !== undefined
+  - typeof cod_balance_limit !== "number" || cod_balance_limit < 0
+  - updates.length === 0
+  SQL/query patterns:
+  - SELECT id FROM fuel_stations WHERE id = ?",
+  - update query
+  - UPDATE fuel_stations SET ${updates.join(", ")} WHERE id = ?
+  - update COD settings" },
+  - Update COD settings error:", err)
+  Response status codes seen: 400, 404, 500, 200
+  Behavior summary: updates-records, financial-settlement-logic
+
+============================================================
+Route: /api/fuel-station/earnings/route.js
+File : app/api/fuel-station/earnings/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): fuel_stations, fuel_station_ledger, cod_settlements
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !fuel_station_id
+  - !station
+  SQL/query patterns:
+  - SELECT id, total_earnings, pending_payout, is_verified, cod_enabled FROM fuel_stations WHERE id = ?",
+  - SELECT COUNT(*) as total_transactions,
+  - SELECT id, transaction_type, amount, description, status,
+  - SELECT id, service_request_id, worker_id, customer_paid_amount,
+  Response status codes seen: 400, 404, 200, 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/fuel-station/stock/route.js
+File : app/api/fuel-station/stock/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): fuel_station_stock, fuel_stations, stock, fuel_station_ledger
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !fuel_station_id
+  - !station
+  - stocks.length === 0
+  SQL/query patterns:
+  - SELECT id, fuel_type, stock_litres, last_refilled_at, updated_at
+  - SELECT id, fuel_type, stock_litres, NULL as last_refilled_at, updated_at
+  - SELECT id FROM fuel_stations WHERE id = ?",
+  - INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, last_refilled_at, updated_at)
+  - INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at)
+  - Update stock levels
+  Response status codes seen: 400, 404, 200, 500
+  Behavior summary: creates-records, updates-records
+
+  Method: PATCH
+  Input / guard conditions:
+  - !fuel_station_id || !fuel_type || stock_litres === undefined
+  - typeof stock_litres !== "number" || stock_litres < 0
+  - !station
+  SQL/query patterns:
+  - SELECT id FROM fuel_stations WHERE id = ?",
+  - Update stock
+  - UPDATE fuel_station_stock
+  - INSERT INTO fuel_station_ledger (
+  - Update stock error:", err)
+  Response status codes seen: 400, 404, 200, 500
+  Behavior summary: creates-records, updates-records
+
+  Method: POST
+  Input / guard conditions:
+  - !fuel_station_id || !fuel_type || !litres_picked_up
+  - typeof litres_picked_up !== "number" || litres_picked_up <= 0
+  - !station
+  - !stock
+  SQL/query patterns:
+  - SELECT id FROM fuel_stations WHERE id = ?",
+  - SELECT stock_litres FROM fuel_station_stock
+  - Update stock (decrease)
+  - UPDATE fuel_station_stock
+  Response status codes seen: 400, 404, 200, 500
+  Behavior summary: updates-records
+
+============================================================
+Route: /api/fuel-stations/route.js
+File : app/api/fuel-stations/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): fuel_station_stock, fuel_stations, users, failed, fuel_station_ledger
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - id
+  - stations.length === 0
+  SQL/query patterns:
+  - SELECT fs.*,
+  - SELECT stock_litres FROM fuel_station_stock WHERE fuel_station_id = fs.id AND fuel_type = 'petrol') as petrol_stock,
+  - SELECT stock_litres FROM fuel_station_stock WHERE fuel_station_id = fs.id AND fuel_type = 'diesel') as diesel_stock
+  - SELECT * to avoid "no such column" errors if schema is old
+  Response status codes seen: 404, 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+  Method: POST
+  Input / guard conditions:
+  - email && body.password
+  SQL/query patterns:
+  - SELECT id FROM users WHERE email = ?
+  - INSERT INTO users (email, password, role, first_name, last_name, phone_number, created_at, updated_at)
+  - INSERT INTO fuel_stations (name, email, phone_number, address, latitude, longitude, cod_supported, is_open, is_verified, user_id, created_at, updated_at)
+  - INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at) VALUES (?, 'petrol', 0, CURRENT_TIMESTAMP)
+  - INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at) VALUES (?, 'diesel', 0, CURRENT_TIMESTAMP)
+  Response status codes seen: 400, 500
+  Behavior summary: creates-records, location-or-distance-logic, financial-settlement-logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !id
+  SQL/query patterns:
+  - UPDATE fuel_stations SET cod_supported = ? WHERE id = ?",
+  - Update failed' }, { status: 500 })
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records, financial-settlement-logic
+
+  Method: DELETE
+  Input / guard conditions:
+  - !id
+  SQL/query patterns:
+  - DELETE FROM fuel_stations WHERE id = ?", [id], (err) => {
+  - DELETE FROM fuel_station_stock WHERE fuel_station_id = ?", [id], () => {
+  - DELETE FROM fuel_station_ledger WHERE fuel_station_id = ?", [id], () => resolve())
+  Response status codes seen: 400, 500
+  Behavior summary: deletes-records, location-or-distance-logic
+
+============================================================
+Route: /api/login/route.js
+File : app/api/login/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): workers, users, fuel_stations
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !email || !password || !role
+  - !isWorker
+  - !user
+  - !passwordMatch
+  - isAdmin && user.role !== "Admin"
+  SQL/query patterns:
+  - SELECT id, email, password, first_name, last_name, phone_number, status FROM workers WHERE email = ?"
+  - SELECT id, email, password, first_name, last_name, phone_number, role, driving_licence FROM users WHERE email = ?"
+  - SELECT id, station_name, is_verified, cod_enabled FROM fuel_stations WHERE user_id = ?",
+  Response status codes seen: 400, 401, 403, 200, 500
+  Behavior summary: financial-settlement-logic
+
+============================================================
+Route: /api/payment/calculate/route.js
+File : app/api/payment/calculate/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): service_requests, workers, platform_settings, settlements
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !service_request_id
+  - !serviceRequest
+  SQL/query patterns:
+  - SELECT * FROM service_requests WHERE id = ?",
+  - SELECT base_pay_per_order, per_km_rate, surge_split_percentage, peak_hour_bonus_percentage, long_distance_bonus_km, long_distance_bonus, incentive_threshold_deliveries, incentive_bonus, minimum_guaranteed_pay FROM workers WHERE
+  - SELECT delivery_fee_base, platform_service_fee_percentage, surge_night_multiplier, surge_rain_multiplier, surge_emergency_multiplier FROM platform_settings WHERE id = 1",
+  Response status codes seen: 400, 404, 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+  Method: GET
+  Input / guard conditions:
+  - !service_request_id
+  SQL/query patterns:
+  - SELECT * FROM settlements WHERE service_request_id = ?",
+  Response status codes seen: 400, 404, 500
+  Behavior summary: financial-settlement-logic
+
+============================================================
+Route: /api/payment/create-order/route.js
+File : app/api/payment/create-order/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): platform_settings
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !service_type
+  - isFuel && (!fuelPrice || fuelPrice <= 0
+  SQL/query patterns:
+  - SELECT is_raining FROM platform_settings WHERE id = 1", [], (err, row) => {
+  Response status codes seen: 400, 500
+  Behavior summary: payment-integration-logic, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/payment/eligibility/route.js
+File : app/api/payment/eligibility/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): users, fuel_stations, cod_settings
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !userId || Number.isNaN(Number(userId
+  - Number.isNaN(orderAmount
+  - !settings
+  - !user
+  - user.cod_disabled
+  - user.cod_disabled_until
+  - !Number.isNaN(until.getTime(
+  - Number(user.cod_failure_count || 0
+  SQL/query patterns:
+  - UPDATE users SET trust_score = 50 WHERE trust_score IS NULL", () => resolve())
+  - UPDATE users SET cod_success_count = 0 WHERE cod_success_count IS NULL", () => resolve())
+  - UPDATE users SET cod_failure_count = 0 WHERE cod_failure_count IS NULL", () => resolve())
+  - UPDATE users SET cod_disabled = 0 WHERE cod_disabled IS NULL", () => resolve())
+  - UPDATE fuel_stations SET cod_supported = 1 WHERE cod_supported IS NULL", () => resolve())
+  - UPDATE fuel_stations SET cod_delivery_allowed = 1 WHERE cod_delivery_allowed IS NULL", () => resolve())
+  - SELECT * FROM cod_settings WHERE id = 1", (err, row) => {
+  - SELECT id, trust_score, cod_success_count, cod_failure_count, cod_disabled, cod_disabled_until FROM users WHERE id = ?",
+  Response status codes seen: 400, 404, 500
+  Behavior summary: updates-records, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/payment/refund/route.js
+File : app/api/payment/refund/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): payments, service, service_requests
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !payment_id
+  SQL/query patterns:
+  - UPDATE payments SET status = 'reversed', updated_at = ? WHERE provider_payment_id = ?
+  - update service request if needed (though usually handled by status change)
+  - UPDATE service_requests SET payment_status = 'REFUNDED' WHERE payment_id = ?
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records, payment-integration-logic, location-or-distance-logic
+
+============================================================
+Route: /api/payment/verify/route.js
+File : app/api/payment/verify/route.js
+Auth signals: none-detected
+DB module imported: no
+Tables touched (detected): none-detected
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !razorpay_order_id || !razorpay_payment_id || !razorpay_signature
+  SQL/query patterns:
+  - none-detected
+  Response status codes seen: 400, 500
+  Behavior summary: payment-integration-logic
+
+============================================================
+Route: /api/payment/webhook/route.js
+File : app/api/payment/webhook/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): environment, service_requests, or, payments, existing, service, retrying
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !webhookSecret
+  - computedSignature !== signature
+  - event === "payment.authorized" || event === "payment.captured"
+  - existingPayment
+  - event === "payment.failed"
+  - event === "payment.authorized"
+  SQL/query patterns:
+  - SELECT id, user_id FROM service_requests WHERE payment_id = ? OR payment_id = ?",
+  - Update or create payment record
+  - SELECT id FROM payments WHERE service_request_id = ? AND provider = 'razorpay'",
+  - Update existing payment
+  - UPDATE payments SET status = ?, provider_payment_id = ?, amount = ?, metadata = ?, updated_at = ? WHERE id = ?",
+  - INSERT INTO payments (service_request_id, provider, provider_payment_id, amount, status, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+  - Update service request payment status
+  - UPDATE service_requests SET payment_status = 'PAID', payment_details = ? WHERE id = ?",
+  Response status codes seen: 500, 401, 200
+  Behavior summary: creates-records, updates-records, payment-integration-logic
+
+============================================================
+Route: /api/payouts/route.js
+File : app/api/payouts/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): settlements, workers, worker_payouts
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - worker_id
+  SQL/query patterns:
+  - SELECT w.id, w.first_name, w.last_name, w.phone_number, w.service_type,
+  - SELECT worker_id, SUM(amount) as total_paid FROM worker_payouts GROUP BY worker_id
+  - SELECT * FROM worker_payouts WHERE worker_id = ? ORDER BY created_at DESC
+  Response status codes seen: 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+  Method: POST
+  Input / guard conditions:
+  - !worker_id || !amount
+  SQL/query patterns:
+  - INSERT INTO worker_payouts (worker_id, amount, reference_id, notes, created_at) VALUES (?, ?, ?, ?, ?)
+  Response status codes seen: 400, 500
+  Behavior summary: creates-records, financial-settlement-logic
+
+============================================================
+Route: /api/ping/route.js
+File : app/api/ping/route.js
+Auth signals: none-detected
+DB module imported: no
+Tables touched (detected): none-detected
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - none-detected
+  SQL/query patterns:
+  - none-detected
+  Response status codes seen: 200
+  Behavior summary: read/response logic
+
+============================================================
+Route: /api/reset-password/route.js
+File : app/api/reset-password/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): password_resets, user, users, activity_log
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !token || !newPassword
+  - !row
+  SQL/query patterns:
+  - SELECT * FROM password_resets WHERE token = ?", [token], (err, r) => {
+  - update user
+  - UPDATE users SET password = ? WHERE id = ?", [hashed, row.user_id], (err) => (err ? reject(err) : resolve()))
+  - UPDATE password_resets SET used = 1 WHERE id = ?", [row.id], (err) => (err ? reject(err) : resolve()))
+  - INSERT INTO activity_log (type, message, created_at) VALUES (?, ?, ?)",
+  Response status codes seen: 400, 500
+  Behavior summary: creates-records, updates-records
+
+============================================================
+Route: /api/service-requests/[id]/route.js
+File : app/api/service-requests/[id]/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): service_requests, the, activity_log, error
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: PATCH
+  Input / guard conditions:
+  - resolvedParams && resolvedParams.id
+  - !Number.isNaN(n
+  - Number.isNaN(id
+  - !status || typeof status !== "string"
+  - !currentRequest
+  SQL/query patterns:
+  - SELECT * FROM service_requests WHERE id = ?", [id], (err, row) => {
+  - Update the status
+  - UPDATE service_requests SET status = ? WHERE id = ?",
+  - INSERT INTO activity_log (type, message, created_at) VALUES (?, ?, ?)",
+  - update error:", err)
+  Response status codes seen: 400, 404, 500
+  Behavior summary: creates-records, updates-records
+
+============================================================
+Route: /api/service-requests/route.js
+File : app/api/service-requests/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): fuel_stations, service_requests, users, cod_settings, payments, settlements, DB, workers, Fuel, fuel_station_stock, failed, fuel_station_ledger, service, Worker, worker, error
+Calls external URLs: none
+Internal fetch usage: yes
+
+  Method: POST
+  Input / guard conditions:
+  - !vehicle_number || String(vehicle_number
+  - !driving_licence || String(driving_licence
+  - !phone_number || String(phone_number
+  - !service_type || !VALID_SERVICE_TYPES.includes(service_type
+  - bodyAmount === null || Number.isNaN(bodyAmount
+  - paymentMethod === "ONLINE"
+  - !paymentId
+  - !payPattern.test(paymentId
+  SQL/query patterns:
+  - UPDATE users SET trust_score = 50 WHERE trust_score IS NULL", () => resolve())
+  - UPDATE users SET cod_success_count = 0 WHERE cod_success_count IS NULL", () => resolve())
+  - UPDATE users SET cod_failure_count = 0 WHERE cod_failure_count IS NULL", () => resolve())
+  - UPDATE users SET cod_disabled = 0 WHERE cod_disabled IS NULL", () => resolve())
+  - UPDATE fuel_stations SET cod_supported = 1 WHERE cod_supported IS NULL", () => resolve())
+  - UPDATE fuel_stations SET cod_delivery_allowed = 1 WHERE cod_delivery_allowed IS NULL", () => resolve())
+  - INSERT INTO service_requests (user_id, vehicle_number, driving_licence, phone_number, service_type, amount, fuel_station_id, payment_method, payment_status, status, created_at, user_lat, user_lon, payment_id, payment_details, litres
+  - SELECT id FROM service_requests WHERE payment_id = ?", [paymentId], (err, row) => {
+  Response status codes seen: 400, 409, 404, 500, 403, 201
+  Behavior summary: creates-records, updates-records, payment-integration-logic, location-or-distance-logic, financial-settlement-logic
+
+  Method: GET
+  Input / guard conditions:
+  - userId != null && !Number.isNaN(userId
+  - workerId != null && !Number.isNaN(workerId
+  - conditions.length > 0
+  SQL/query patterns:
+  - SELECT sr.*,
+  Response status codes seen: 500
+  Behavior summary: location-or-distance-logic, financial-settlement-logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !id
+  - assigned_worker != null && (status === "Assigned" || status === "In Progress"
+  - !currentRequest
+  - status
+  - status === "Assigned"
+  - status === "In Progress"
+  - status === "Completed"
+  - status === "Cancelled"
+  SQL/query patterns:
+  - UPDATE users SET trust_score = 50 WHERE trust_score IS NULL", () => resolve())
+  - UPDATE users SET cod_success_count = 0 WHERE cod_success_count IS NULL", () => resolve())
+  - UPDATE users SET cod_failure_count = 0 WHERE cod_failure_count IS NULL", () => resolve())
+  - UPDATE users SET cod_disabled = 0 WHERE cod_disabled IS NULL", () => resolve())
+  - UPDATE fuel_stations SET cod_supported = 1 WHERE cod_supported IS NULL", () => resolve())
+  - UPDATE fuel_stations SET cod_delivery_allowed = 1 WHERE cod_delivery_allowed IS NULL", () => resolve())
+  - SELECT id, status, assigned_worker FROM service_requests WHERE id = ?",
+  - SELECT COUNT(*) as count FROM service_requests WHERE assigned_worker = ? AND status IN ('Assigned', 'In Progress') AND id != ?",
+  Response status codes seen: 400, 404, 409, 500
+  Behavior summary: creates-records, updates-records, payment-integration-logic, location-or-distance-logic, financial-settlement-logic
+
+============================================================
+Route: /api/signup/route.js
+File : app/api/signup/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): workers, users
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - !role || !firstName || !lastName || !email || !phone || !password
+  SQL/query patterns:
+  - INSERT INTO workers (email, password, first_name, last_name, phone_number, status, created_at) VALUES (?, ?, ?, ?, ?, 'Available', ?)"
+  - INSERT INTO users (email, password, first_name, last_name, phone_number, role, created_at) VALUES (?, ?, ?, ?, ?, 'User', ?)"
+  Response status codes seen: 400, 201, 409, 500
+  Behavior summary: creates-records
+
+============================================================
+Route: /api/webhooks/razorpay-payouts/route.js
+File : app/api/webhooks/razorpay-payouts/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): log, payout_logs, workers
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: POST
+  Input / guard conditions:
+  - process.env.NODE_ENV === 'production' && signature !== expectedSignature
+  SQL/query patterns:
+  - Update log
+  - UPDATE payout_logs SET status = 'processed', updated_at = CURRENT_TIMESTAMP WHERE payout_id = ?",
+  - SELECT worker_id, amount FROM payout_logs WHERE payout_id = ?", [payout.id], (err, row) => resolve(row))
+  - UPDATE workers SET pending_balance = pending_balance + ? WHERE id = ?", [log.amount, log.worker_id])
+  - UPDATE payout_logs SET status = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP WHERE payout_id = ?",
+  Response status codes seen: 400, 500
+  Behavior summary: updates-records, payment-integration-logic, financial-settlement-logic
+
+============================================================
+Route: /api/worker/bank-details/route.js
+File : app/api/worker/bank-details/route.js
+Auth signals: requireWorker
+DB module imported: yes
+Tables touched (detected): worker_bank_details, worker
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - !auth
+  - !bankDetails
+  SQL/query patterns:
+  - SELECT account_holder_name, account_number, ifsc_code, bank_name, is_bank_verified, rejection_reason FROM worker_bank_details WHERE worker_id = ?",
+  - Update worker bank details */
+  Response status codes seen: none-detected
+  Behavior summary: updates-records, financial-settlement-logic
+
+  Method: POST
+  Input / guard conditions:
+  - !auth
+  - !account_holder_name || !account_number || !ifsc_code || !bank_name
+  - !/^/d{9,18}$/.test(normalizedAccountNumber
+  - !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(normalizedIfsc
+  SQL/query patterns:
+  - SELECT id, is_bank_verified FROM worker_bank_details WHERE worker_id = ?", [auth.id], (err, row) => resolve(row))
+  - UPDATE worker_bank_details
+  - INSERT INTO worker_bank_details (worker_id, account_holder_name, account_number, ifsc_code, bank_name)
+  Response status codes seen: none-detected
+  Behavior summary: creates-records, updates-records, financial-settlement-logic
+
+============================================================
+Route: /api/workers/route.js
+File : app/api/workers/route.js
+Auth signals: none-detected
+DB module imported: yes
+Tables touched (detected): workers, error
+Calls external URLs: none
+Internal fetch usage: no
+
+  Method: GET
+  Input / guard conditions:
+  - err && !/duplicate column name/i.test(err.message
+  - err && !/duplicate column name|already exists/i.test(err.message
+  - workerId
+  SQL/query patterns:
+  - UPDATE workers
+  - SELECT id, first_name, last_name, phone_number, status, service_type, status_locked, verified, latitude, longitude, floater_cash, last_cash_collection_at, docs_submitted_at FROM workers WHERE id = ?",
+  - SELECT id, first_name, last_name, status, service_type, status_locked, verified, latitude, longitude, floater_cash, last_cash_collection_at, docs_submitted_at FROM workers WHERE status = 'Available' AND verified = 1 ORDER BY fi
+  Response status codes seen: 500
+  Behavior summary: updates-records, location-or-distance-logic
+
+  Method: PATCH
+  Input / guard conditions:
+  - !id
+  - err && !/duplicate column name/i.test(err.message
+  - !currentWorker
+  - service_type !== undefined
+  - latitude !== undefined
+  - Number.isNaN(lat
+  - longitude !== undefined
+  - Number.isNaN(lng
+  SQL/query patterns:
+  - SELECT status, status_locked FROM workers WHERE id = ?", [id], (err, row) => {
+  - UPDATE workers SET ${updateFields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  - update error:", err)
+  Response status codes seen: 400, 404, 403, 500
+  Behavior summary: updates-records, location-or-distance-logic
+
+============================================================
+GLOBAL OBSERVATIONS
+============================================================
+- API surface is large and operationally complete: auth, requests, assignment, payments, payouts, station/admin controls, telemetry.
+- SQLite-first code path dominates runtime behavior through database/db.js.
+- Several admin routes rely on role checks at app layer; server-side auth signals are inconsistent across files and should be standardized.
+- Payment and settlement logic is spread across /api/payment/*, /api/admin/payments*, /api/admin/settlements*, and DB helpers.
+- One previously detected path bug remains in /api/payment/refund import resolution.
+

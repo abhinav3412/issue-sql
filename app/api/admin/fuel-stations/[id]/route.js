@@ -1,0 +1,220 @@
+import { NextResponse } from "next/server";
+const { getDB } = require("../../../../../database/db");
+const bcrypt = require("bcryptjs");
+
+export async function GET(request, props) {
+    const params = await props.params;
+    const { id } = params;
+
+    if (!id) {
+        return NextResponse.json(
+            { success: false, error: "Station ID is required" },
+            { status: 400 }
+        );
+    }
+
+    const db = getDB();
+
+    try {
+        // 1. Get Station Details
+        const station = await new Promise((resolve, reject) => {
+            db.get(
+                `SELECT fs.*, 
+                u.email as linked_user_email
+         FROM fuel_stations fs
+         LEFT JOIN users u ON fs.user_id = u.id
+         WHERE fs.id = ?`,
+                [id],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                }
+            );
+        });
+
+        if (!station) {
+            return NextResponse.json(
+                { success: false, error: "Fuel station not found" },
+                { status: 404 }
+            );
+        }
+
+        // 2. Get Stock Levels
+        const stocks = await new Promise((resolve, reject) => {
+            db.all(
+                `SELECT fuel_type, stock_litres FROM fuel_station_stock WHERE fuel_station_id = ?`,
+                [id],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+
+        // Format stocks object: { petrol: 100, diesel: 200 }
+        const stocksObj = {};
+        stocks.forEach((s) => {
+            stocksObj[s.fuel_type] = s.stock_litres;
+        });
+
+        // 3. Get Recent Ledger (last 10)
+        const recent_ledger = await new Promise((resolve, reject) => {
+            db.all(
+                `SELECT * FROM fuel_station_ledger 
+         WHERE fuel_station_id = ? 
+         ORDER BY created_at DESC LIMIT 10`,
+                [id],
+                (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                }
+            );
+        });
+
+        return NextResponse.json(
+            {
+                success: true,
+                station: {
+                    ...station,
+                    stocks: stocksObj,
+                },
+                recent_ledger,
+            },
+            { status: 200 }
+        );
+    } catch (error) {
+        console.error("Get station details error:", error);
+        return NextResponse.json(
+            { success: false, error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}
+
+export async function PATCH(request, props) {
+    const params = await props.params;
+    const { id } = params;
+    const body = await request.json();
+
+    if (!id) {
+        return NextResponse.json(
+            { success: false, error: "Station ID is required" },
+            { status: 400 }
+        );
+    }
+
+    const { new_password, ...otherUpdates } = body;
+
+    const allowedFields = [
+        "is_verified",
+        "is_open",
+        "cod_enabled",
+        "cod_balance_limit",
+        "platform_trust_flag",
+    ];
+    const updates = [];
+    const values = [];
+
+    // Filter body for allowed fields
+    for (const key of Object.keys(otherUpdates)) {
+        if (allowedFields.includes(key)) {
+            updates.push(`${key} = ?`);
+            // Convert booleans to 1/0
+            const val = otherUpdates[key];
+            values.push(typeof val === "boolean" ? (val ? 1 : 0) : val);
+        }
+    }
+
+    const db = getDB();
+
+    try {
+        // 1. Update station fields if any
+        if (updates.length > 0) {
+            values.push(id);
+            await new Promise((resolve, reject) => {
+                db.run(
+                    `UPDATE fuel_stations SET ${updates.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                    values,
+                    function (err) {
+                        if (err) reject(err);
+                        else resolve(this.changes);
+                    }
+                );
+            });
+        }
+
+        // 2. Handle password reset if provided
+        if (new_password) {
+            // Find linked user_id
+            const station = await new Promise((resolve, reject) => {
+                db.get(`SELECT user_id FROM fuel_stations WHERE id = ?`, [id], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
+            });
+
+            if (station && station.user_id) {
+                const hashedPassword = await bcrypt.hash(new_password, 10);
+                await new Promise((resolve, reject) => {
+                    db.run(
+                        `UPDATE users SET password = ? WHERE id = ?`,
+                        [hashedPassword, station.user_id],
+                        (err) => {
+                            if (err) reject(err);
+                            else resolve();
+                        }
+                    );
+                });
+            }
+        }
+
+        return NextResponse.json(
+            { success: true, message: "Station updated successfully" },
+            { status: 200 }
+        );
+    } catch (error) {
+        console.error("Update station error:", error);
+        return NextResponse.json(
+            { success: false, error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}
+
+export async function DELETE(request, props) {
+    const params = await props.params;
+    const { id } = params;
+
+    if (!id) {
+        return NextResponse.json(
+            { success: false, error: "Station ID is required" },
+            { status: 400 }
+        );
+    }
+
+    const db = getDB();
+
+    try {
+        await new Promise((resolve, reject) => {
+            db.run(
+                `DELETE FROM fuel_stations WHERE id = ?`,
+                [id],
+                function (err) {
+                    if (err) reject(err);
+                    else resolve(this.changes);
+                }
+            );
+        });
+
+        return NextResponse.json(
+            { success: true, message: "Station deleted successfully" },
+            { status: 200 }
+        );
+    } catch (error) {
+        console.error("Delete station error:", error);
+        return NextResponse.json(
+            { success: false, error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}

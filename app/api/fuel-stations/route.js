@@ -1,0 +1,229 @@
+import { NextResponse } from 'next/server';
+const { getDB } = require('../../../database/db');
+const bcrypt = require('bcryptjs');
+
+export async function GET(request) {
+  const db = getDB();
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get('search');
+  const verifiedOnly = searchParams.get('verified_only') === 'true';
+  const id = searchParams.get('id');
+
+  try {
+    console.log("GET /api/fuel-stations: Request received");
+    const stations = await new Promise((resolve, reject) => {
+      let query = `
+        SELECT 
+          fs.*,
+          (SELECT stock_litres FROM fuel_station_stock WHERE fuel_station_id = fs.id AND fuel_type = 'petrol') as petrol_stock,
+          (SELECT stock_litres FROM fuel_station_stock WHERE fuel_station_id = fs.id AND fuel_type = 'diesel') as diesel_stock
+        FROM fuel_stations fs 
+        WHERE 1=1
+      `;
+      const params = [];
+
+      if (id) {
+        query += ` AND fs.id = ?`;
+        params.push(id);
+      }
+
+      if (verifiedOnly) {
+        query += ` AND (fs.is_verified = 1 OR fs.is_verified = 'true')`;
+      }
+
+      if (search) {
+        query += ` AND (fs.name LIKE ?)`;
+        params.push(`%${search}%`);
+      }
+
+      query += ` ORDER BY fs.created_at DESC`;
+
+      // Use SELECT * to avoid "no such column" errors if schema is old
+      db.all(query, params, (err, rows) => {
+        if (err) {
+          console.error("GET /api/fuel-stations DB Error:", err);
+          reject(err);
+        }
+        else {
+          // Normalize data for frontend compatibility (handle legacy schema)
+          const normalized = (rows || []).map(station => ({
+            ...station,
+            station_name: station.station_name || station.name,
+            cod_enabled: station.cod_enabled !== undefined ? station.cod_enabled : station.cod_supported,
+            petrol_stock: station.petrol_stock || 0,
+            diesel_stock: station.diesel_stock || 0,
+            total_earnings: station.total_earnings || 0,
+            pending_payout: station.pending_payout || 0,
+            // Ensure coordinates are numbers
+            latitude: Number(station.latitude),
+            longitude: Number(station.longitude)
+          }));
+          resolve(normalized);
+        }
+      });
+    });
+    console.log(`GET /api/fuel-stations: Found ${stations.length} stations`);
+
+    if (id) {
+      if (stations.length === 0) {
+        return NextResponse.json({ error: 'Station not found' }, { status: 404 });
+      }
+      return NextResponse.json(stations[0]);
+    }
+
+    return NextResponse.json(stations);
+  } catch (error) {
+    console.error("GET /api/fuel-stations Error:", error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+export async function POST(request) {
+  const body = await request.json();
+  // Support both station_name (new spec) and name (legacy)
+  const station_name = body.station_name || body.name || 'Unnamed Station';
+  const { latitude, longitude, cod_enabled, email, phone_number, address } = body;
+  const parsedLatitude = Number(latitude);
+  const parsedLongitude = Number(longitude);
+
+  if (
+    latitude === undefined || latitude === null || latitude === '' ||
+    longitude === undefined || longitude === null || longitude === '' ||
+    !Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)
+  ) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  const db = getDB();
+
+  try {
+    console.log("POST /api/fuel-stations: Creating station", station_name);
+
+    // 1. First create/get user record for the station
+    let user_id = null;
+    if (email && body.password) {
+      // Check if user exists
+      const existingUser = await new Promise((resolve, reject) => {
+        db.get(`SELECT id FROM users WHERE email = ?`, [email], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      });
+
+      if (existingUser) {
+        user_id = existingUser.id;
+      } else {
+        // Create new user with role 'Station'
+        const hashedPassword = await bcrypt.hash(body.password, 10);
+        const safePhoneNumber = String(phone_number ?? "").trim();
+        const insertStationUser = (role) => new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO users (email, password, role, first_name, last_name, phone_number, created_at, updated_at) 
+                     VALUES (?, ?, ?, ?, 'Station', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [email, hashedPassword, role, station_name, safePhoneNumber],
+            function (err) {
+              if (err) reject(err);
+              else resolve(this.lastID);
+            }
+          );
+        });
+
+        try {
+          user_id = await insertStationUser('Station');
+        } catch (err) {
+          // Backward compatibility: some older DBs only allow User/Admin in users.role.
+          if (String(err?.message || '').includes("role IN ('User', 'Admin')")) {
+            user_id = await insertStationUser('User');
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
+
+    // 2. Create the fuel station record
+    const result = await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO fuel_stations (name, email, phone_number, address, latitude, longitude, cod_supported, is_open, is_verified, user_id, created_at, updated_at) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [station_name, email || null, phone_number || null, address || null, parsedLatitude, parsedLongitude, cod_enabled ? 1 : 0, user_id],
+        function (err) {
+          if (err) {
+            console.error("POST /api/fuel-stations DB Error:", err);
+            reject(err);
+          }
+          else resolve({ id: this.lastID });
+        }
+      );
+    });
+
+    // Initialize stock entries
+    await new Promise((resolve, reject) => {
+      db.run(`INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at) VALUES (?, 'petrol', 0, CURRENT_TIMESTAMP)`, [result.id], (err) => {
+        if (err) console.error("Stock init error (petrol):", err);
+        db.run(`INSERT INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at) VALUES (?, 'diesel', 0, CURRENT_TIMESTAMP)`, [result.id], (err2) => {
+          if (err2) console.error("Stock init error (diesel):", err2);
+          resolve();
+        });
+      });
+    });
+
+    return NextResponse.json({ success: true, id: result.id });
+  } catch (error) {
+    console.error("Create station error:", error);
+    return NextResponse.json({ error: 'Failed to create station' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request) {
+  const body = await request.json();
+  const { id, cod_enabled, cod_supported } = body;
+  const isEnabled = cod_enabled !== undefined ? cod_enabled : cod_supported;
+
+  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+  const db = getDB();
+  try {
+    await new Promise((resolve, reject) => {
+      db.run(
+        "UPDATE fuel_stations SET cod_supported = ? WHERE id = ?",
+        [isEnabled ? 1 : 0, id],
+        (err) => {
+          if (err) reject(err);
+          else resolve();
+        }
+      );
+    });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+
+  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+  const db = getDB();
+  try {
+    await new Promise((resolve, reject) => {
+      db.run("DELETE FROM fuel_stations WHERE id = ?", [id], (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Cleanup related data
+    await new Promise(resolve => {
+      db.run("DELETE FROM fuel_station_stock WHERE fuel_station_id = ?", [id], () => {
+        db.run("DELETE FROM fuel_station_ledger WHERE fuel_station_id = ?", [id], () => resolve());
+      });
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
+  }
+}

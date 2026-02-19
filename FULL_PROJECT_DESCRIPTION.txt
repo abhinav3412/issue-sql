@@ -1,0 +1,344 @@
+AGF FULL PROJECT DESCRIPTION (Auto-generated)
+Generated on: 2026-02-17 23.28.55
+Project root: C:\Users\abhin\Desktop\AGF100%\PETROL18_02
+
+============================================================
+1) WHAT THIS PROJECT IS
+============================================================
+This is a full-stack Next.js App Router platform for emergency roadside assistance and fuel delivery.
+It supports four operational personas:
+- User: create service requests, pay online/COD, track status, cancel, rate workers.
+- Worker: accept nearby jobs, navigate, update live location, complete jobs, track payouts.
+- Fuel Station: manage stock, COD settings, earnings, payouts, bank details.
+- Admin: monitor operations, manage users/workers/stations, configure fees, settle payouts, analytics.
+
+Primary business domains implemented:
+- On-demand service request lifecycle (Pending -> Assigned -> In Progress -> Completed/Cancelled)
+- Fuel station assignment by distance + stock + COD rules
+- Payment lifecycle with Razorpay (order/create/verify/webhook/refund)
+- Settlement calculation and audit logging
+- Worker and fuel-station payout workflows
+- Connectivity telemetry and heatmap zones
+
+============================================================
+2) TECH STACK
+============================================================
+- Framework: Next.js (App Router), React, TypeScript + JavaScript mixed codebase
+- Styling/UI: CSS modules/global CSS, Framer Motion, Recharts, Leaflet/react-leaflet
+- DB: SQLite as default runtime DB (database/agf_database.db), plus optional MySQL/PostgreSQL schema files
+- Payments: Razorpay checkout + webhook + payout integration utilities
+- Auth: custom JWT implementation in database/auth-middleware.js + localStorage/sessionStorage on client
+
+Core package scripts:
+- npm run dev
+- npm run build
+- npm run start
+- npm run lint (currently misaligned with installed Next CLI; see Issues section)
+- npm run setup (database setup + seed admin)
+
+============================================================
+3) CORE ARCHITECTURE AND LOGIC FLOWS
+============================================================
+A. Authentication flow
+- Signup: /api/signup (User/Worker), /api/auth/fuel-station-signup (station account + stock bootstrap)
+- Login: /api/login and /api/auth/login return role-aware identity (+ token in some flows)
+- Client session: localStorage keys agf_user and agf_token
+- Role-guard behavior is implemented in page-level checks and utility helpers (app/utils/authGuard.ts)
+
+B. Service request lifecycle
+- User creates request via /api/service-requests (POST)
+- Worker accepts via /api/service-requests (PATCH assigned_worker + status)
+- Worker/flow updates progress to In Progress/Completed
+- User can cancel in Pending/Assigned windows
+- Ratings/feedback submitted via /api/feedback and reflected in worker review endpoints
+
+C. Fuel station assignment logic
+- Haversine calculation module: database/distance-calculator.js
+- Selector module: database/fuel-station-selector.js
+- API: /api/assign-fuel-station (POST/GET)
+Main constraints:
+- nearest station first (distance sort)
+- station open/verified
+- required fuel type has stock >= requested litres
+- COD path enforces cod support + trust flag + balance limit
+- fallback to prepaid station if COD unsupported and fallback enabled
+- assignment caching + alternatives support
+
+D. Payment + settlement flow
+- Bill estimate / split logic: /api/payment/calculate and database/settlement-calculator.js
+- Online payment order: /api/payment/create-order
+- Signature verification: /api/payment/verify
+- Payment webhooks: /api/payment/webhook (status synchronization)
+- Refund endpoint exists: /api/payment/refund
+- Settlement reporting APIs under /api/admin/settlements and /api/admin/payments
+
+E. Payout and collections flow
+- Worker payout APIs: /api/payouts + admin settle-all endpoint
+- Worker COD cash collection: /api/admin/workers/collect-cash
+- Fuel station payout APIs: /api/admin/fuel-station-payouts and /settle-all
+- RazorpayX helper utilities in app/utils/razorpayX.ts (with mock mode fallback)
+
+F. Connectivity intelligence
+- Separate DB file: database/connectivity.db
+- Report ingest: /api/connectivity-reports
+- Visualization feeds: /api/connectivity-heat and /api/connectivity-zones
+- Admin dashboard overlays poor-connectivity and service failure hotspots
+
+============================================================
+4) DATABASE LOGIC
+============================================================
+Main DB connector:
+- database/db.js
+Key behaviors:
+- Initializes service_prices, platform_settings (id=1 singleton), worker_payouts
+- Provides local time and UTC timestamp helpers
+- Keeps SQLite file under database/ to avoid watcher loops
+
+Primary domain tables (from schema + migrations + usage):
+- users
+- workers
+- service_requests
+- activity_log
+- service_types / service_prices
+- payments
+- settlements
+- platform_settings
+- worker_payouts
+- fuel_stations
+- fuel_station_stock
+- fuel_station_ledger
+- cod_settlements
+- audit_logs
+- worker_bank_details / fuel_station_bank_details (used in payout/bank routes)
+- password_resets
+- fuel_station_assignments / worker_station_cache (assignment tracking)
+
+Business rules captured in code:
+- Fuel station receives 100% fuel cost component
+- Worker pay combines base + distance + surge/bonuses (+ minimum guarantee)
+- Platform profit computed as residual after fuel station + worker payouts
+- COD eligibility depends on station support/trust/balance policies
+- COD/float controls for worker cash collection limits and reconciliation
+
+============================================================
+5) FRONTEND FUNCTIONALITY (FEATURES BY AREA)
+============================================================
+Landing/Public:
+- Marketing-style homepage with animated sections, service highlights, CTA links
+- Terms and privacy pages
+- Login, signup, forgot/reset password pages
+
+User dashboard (/user):
+- Create service requests with service type, location, fuel litres
+- Dynamic bill preview and pricing components
+- Online payment flow (Razorpay)
+- COD eligibility check before allowing COD
+- Request timeline/history with filters
+- Cancellation with refund awareness
+- Rate worker after completion
+- Map/location assistance components
+
+Worker dashboard (/worker):
+- Role-validated mission control layout
+- Live map tracking and periodic location push (/api/workers PATCH)
+- Accept/cancel/complete jobs with status transitions
+- Navigation shortcuts to pump/customer
+- Fuel station assignment widget integration
+- Distance-based completion guard (nearby threshold)
+- Earnings and payout history visibility
+- Document upload + verification awareness
+
+Admin dashboard (/admin and subpages):
+- KPI cards, active worker map, recent requests, activity feed
+- Analytics views (requests, failures, ETA, utilization)
+- Heatmaps (cancellation/failure/connectivity)
+- Service price and platform settings management
+- Worker management + cash collection actions
+- User management
+- Fuel station management + detail/update/delete
+- Worker payouts and fuel-station payouts operations
+- COD controls and user eligibility controls
+
+Fuel-station dashboard (/fuel-station and subpages):
+- Earnings + pending payout view
+- Live stock by fuel type and stock updates
+- COD settings management
+- Transaction history / bank detail integration
+- Station health indicators (verification/COD status)
+
+============================================================
+6) API SURFACE (FULL ROUTE INVENTORY)
+============================================================
+- app\api\admin\cod-settings\route.js [GET, PUT]
+- app\api\admin\cod-users\route.js [GET, PATCH]
+- app\api\admin\fuel-station-payouts\route.js [GET, POST]
+- app\api\admin\fuel-station-payouts\settle-all\route.js [POST]
+- app\api\admin\fuel-stations\[id]\route.js [GET, PATCH, DELETE]
+- app\api\admin\payments\route.js [GET, POST]
+- app\api\admin\payments\summary\route.js [GET]
+- app\api\admin\payouts\settle-all\route.js [POST]
+- app\api\admin\platform-settings\route.js [GET, PUT]
+- app\api\admin\service-prices\route.js [GET, POST]
+- app\api\admin\settlements\route.js [GET, POST]
+- app\api\admin\settlements\summary\route.js [GET]
+- app\api\admin\stats\route.js [GET]
+- app\api\admin\users\[id]\route.js [PATCH, DELETE]
+- app\api\admin\users\route.js [GET]
+- app\api\admin\workers\[id]\bank-details\route.js [GET, PATCH]
+- app\api\admin\workers\[id]\reviews\route.js [GET]
+- app\api\admin\workers\[id]\route.js [GET, PATCH, DELETE]
+- app\api\admin\workers\collect-cash\route.js [POST]
+- app\api\admin\workers\route.js [GET]
+- app\api\assign-fuel-station\route.js [POST, GET]
+- app\api\auth\fuel-station-signup\route.js [POST]
+- app\api\auth\login\route.js [POST]
+- app\api\connectivity-heat\route.js [GET]
+- app\api\connectivity-reports\route.js [POST]
+- app\api\connectivity-zones\route.js [GET]
+- app\api\feedback\route.js [POST]
+- app\api\forgot-password\route.js [POST]
+- app\api\fuel-prices\route.ts [GET]
+- app\api\fuel-station\bank-details\route.js [GET, POST]
+- app\api\fuel-station\cod-settings\route.js [GET, PATCH]
+- app\api\fuel-station\earnings\route.js [GET]
+- app\api\fuel-station\stock\route.js [GET, PATCH, POST]
+- app\api\fuel-stations\route.js [GET, POST, PATCH, DELETE]
+- app\api\login\route.js [POST]
+- app\api\payment\calculate\route.js [POST, GET]
+- app\api\payment\create-order\route.js [POST]
+- app\api\payment\eligibility\route.js [GET]
+- app\api\payment\refund\route.js [POST]
+- app\api\payment\verify\route.js [POST]
+- app\api\payment\webhook\route.js [POST]
+- app\api\payouts\route.js [GET, POST]
+- app\api\ping\route.js [GET]
+- app\api\reset-password\route.js [POST]
+- app\api\service-requests\[id]\route.js [PATCH]
+- app\api\service-requests\route.js [POST, GET, PATCH]
+- app\api\signup\route.js [POST]
+- app\api\webhooks\razorpay-payouts\route.js [POST]
+- app\api\worker\bank-details\route.js [GET, POST]
+- app\api\workers\route.js [GET, PATCH]
+
+============================================================
+7) PAGE ROUTE INVENTORY
+============================================================
+- app\admin\cod\page.tsx -> app\admin\cod\page.tsx
+- app\admin\fuel-station-payouts\page.tsx -> app\admin\fuel-station-payouts\page.tsx
+- app\admin\fuel-stations\[id]\page.tsx -> app\admin\fuel-stations\[id]\page.tsx
+- app\admin\fuel-stations\page.tsx -> app\admin\fuel-stations\page.tsx
+- app\admin\page.tsx -> app\admin\page.tsx
+- app\admin\payouts\page.tsx -> app\admin\payouts\page.tsx
+- app\admin\service-requests\page.tsx -> app\admin\service-requests\page.tsx
+- app\admin\users\page.tsx -> app\admin\users\page.tsx
+- app\admin\workers\page.tsx -> app\admin\workers\page.tsx
+- app\forgot-password\page.tsx -> app\forgot-password\page.tsx
+- app\fuel-station\cod-settings\page.tsx -> app\fuel-station\cod-settings\page.tsx
+- app\fuel-station\earnings\page.tsx -> app\fuel-station\earnings\page.tsx
+- app\fuel-station\page.tsx -> app\fuel-station\page.tsx
+- app\fuel-station\stock\page.tsx -> app\fuel-station\stock\page.tsx
+- app\fuel-station\transactions\page.tsx -> app\fuel-station\transactions\page.tsx
+- app\login\page.tsx -> app\login\page.tsx
+- app\page.tsx -> app\page.tsx
+- app\privacy\page.tsx -> app\privacy\page.tsx
+- app\reset-password\[token]\page.tsx -> app\reset-password\[token]\page.tsx
+- app\signup\page.tsx -> app\signup\page.tsx
+- app\terms\page.tsx -> app\terms\page.tsx
+- app\user\page.tsx -> app\user\page.tsx
+- app\worker\page.tsx -> app\worker\page.tsx
+- app\worker\profile\page.tsx -> app\worker\profile\page.tsx
+
+============================================================
+8) FRONTEND -> API CALL MAP (DETECTED)
+============================================================
+- app\admin\AdminMap.tsx -> /api/fuel-stations
+- app\admin\cod\page.tsx -> /api/admin/cod-settings, /api/admin/cod-users
+- app\admin\fuel-station-payouts\page.tsx -> /api/fuel-stations, /api/admin/fuel-station-payouts/settle-all
+- app\admin\fuel-stations\page.tsx -> /api/fuel-stations
+- app\admin\page.tsx -> /api/admin/platform-settings, /api/connectivity-heat, /api/connectivity-zones, /api/payouts?summary=true, /api/payouts, /api/admin/service-prices, /api/fuel-prices
+- app\admin\payouts\page.tsx -> /api/admin/workers, /api/admin/payouts/settle-all
+- app\admin\service-requests\page.tsx -> /api/admin/stats
+- app\admin\users\page.tsx -> /api/admin/users
+- app\admin\workers\page.tsx -> /api/admin/workers, /api/admin/workers/collect-cash
+- app\forgot-password\page.tsx -> /api/forgot-password
+- app\fuel-station\cod-settings\page.tsx -> /api/fuel-station/cod-settings
+- app\fuel-station\earnings\page.tsx -> /api/fuel-station/bank-details
+- app\fuel-station\stock\page.tsx -> /api/fuel-station/stock
+- app\hooks\useWorkerLocationTracking.ts -> /api/assign-fuel-station
+- app\login\page.tsx -> /api/login
+- app\reset-password\[token]\page.tsx -> /api/reset-password
+- app\signup\page.tsx -> /api/signup
+- app\user\page.tsx -> /api/fuel-prices, /api/admin/service-prices, /api/payment/create-order, /api/payment/verify, /api/service-requests, /api/workers, /api/fuel-stations, /api/feedback
+- app\user\UserMap.tsx -> /api/connectivity-zones, /api/connectivity-heat, /api/ping, /api/connectivity-reports
+- app\utils\razorpayX.ts -> https://api.razorpay.com/v1/contacts, https://api.razorpay.com/v1/fund_accounts, https://api.razorpay.com/v1/payouts
+- app\worker\FuelStationAssignment.tsx -> /api/assign-fuel-station
+- app\worker\page.tsx -> /api/workers, /api/service-requests
+- app\worker\profile\page.tsx -> /api/worker/bank-details, /api/workers
+
+============================================================
+9) DATABASE / MIGRATION / SETUP SCRIPTS
+============================================================
+- database/auth-middleware.js
+- database/connectivity-db.js
+- database/db.js
+- database/distance-calculator.js
+- database/fix_fuel_stations_schema.js
+- database/fix-settlements-schema.js
+- database/fuel-station-selector.js
+- database/migrate-fuel-stations.js
+- database/migrate-fuel-station-stock.js
+- database/migrate-payments-settlement.js
+- database/migrate-service-requests.js
+- database/migrate-worker-payouts.js
+- database/seed-admin.js
+- database/settlement-calculator.js
+- database/setup.js
+- database/setup-connectivity.js
+
+============================================================
+10) CONFIG + ASSETS + SUPPORT FILES
+============================================================
+- next.config.mjs: strict mode, allowed dev origins, turbopack root override
+- tsconfig.json: strict TS, alias @/* -> project root
+- app/globals.css and component CSS files: full UI theme and role-specific layouts
+- types/leaflet-heat.d.ts and database/distance-calculator.d.ts for typings
+- public/* avatars and icons used in role/login/admin UIs
+- documentation files:
+  - FUEL_STATION_ASSIGNMENT.md
+  - FUEL_STATION_IMPLEMENTATION.md
+  - PAYMENT_SETTLEMENT_IMPLEMENTATION.md
+  - README.md
+
+============================================================
+11) IMPORTANT IMPLEMENTATION NOTES / RISKS FOUND DURING ANALYSIS
+============================================================
+1) Import path bug in refund route
+- File: app/api/payment/refund/route.js
+- Current import points to ../../../database/db but should resolve to ../../../../database/db from this folder depth.
+- Impact: runtime module resolution failure for refund API.
+
+2) Lint script mismatch with current Next CLI
+- package.json uses: next lint
+- On this installed Next version, lint subcommand is not available and is interpreted as a directory argument.
+- Impact: npm run lint fails and does not validate code.
+
+3) Mixed auth role naming conventions
+- Server roles include User/Worker/Admin/Fuel_Station, while some client logic uses Station.
+- Works through translation in login flow, but maintainers should keep naming normalized to avoid edge bugs.
+
+4) Encoding artifacts in some UI/doc strings
+- Several files show mojibake characters in emoji/special symbols.
+- Impact: cosmetic readability issues; low functional risk.
+
+============================================================
+12) END-TO-END FEATURE SUMMARY (HIGH LEVEL)
+============================================================
+The project is not a basic login app; it is a multi-role operations platform with:
+- Real request orchestration
+- Geolocation and nearest-station assignment
+- COD/online payment strategy with settlement accounting
+- Operational control panels for workers, stations, and admins
+- Financial reconciliation and payout pipelines
+- Telemetry-driven quality overlays (connectivity/failure heatmaps)
+
+This repository contains both product-facing UI and business-critical backend logic in one Next.js monorepo-style application.
