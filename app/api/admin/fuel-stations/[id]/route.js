@@ -71,6 +71,23 @@ export async function GET(request, props) {
 
     try {
         await ensureFuelStationAdminColumns(db);
+        const resolved = await resolveStationRow(db, id);
+        if (!resolved) {
+            return NextResponse.json(
+                { success: false, error: "Fuel station not found" },
+                { status: 404 }
+            );
+        }
+        const stationId = resolved.id;
+        const linkedUserId = resolved.user_id ? Number(resolved.user_id) : null;
+        const resolved = await resolveStationRow(db, id);
+        if (!resolved) {
+            return NextResponse.json(
+                { success: false, error: "Fuel station not found" },
+                { status: 404 }
+            );
+        }
+        const stationId = resolved.id;
 
         // 1. Get Station Details
         const station = await new Promise((resolve, reject) => {
@@ -80,7 +97,7 @@ export async function GET(request, props) {
          FROM fuel_stations fs
          LEFT JOIN users u ON fs.user_id = u.id
          WHERE fs.id = ?`,
-                [id],
+                [stationId],
                 (err, row) => {
                     if (err) reject(err);
                     else resolve(row);
@@ -99,7 +116,7 @@ export async function GET(request, props) {
         const stocks = await new Promise((resolve, reject) => {
             db.all(
                 `SELECT fuel_type, stock_litres FROM fuel_station_stock WHERE fuel_station_id = ?`,
-                [id],
+                [stationId],
                 (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows || []);
@@ -119,7 +136,7 @@ export async function GET(request, props) {
                 `SELECT * FROM fuel_station_ledger 
          WHERE fuel_station_id = ? 
          ORDER BY created_at DESC LIMIT 10`,
-                [id],
+                [stationId],
                 (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows || []);
@@ -200,7 +217,7 @@ export async function PATCH(request, props) {
 
         const canUpdateUpdatedAt = stationCols.has("updated_at");
         if (filteredUpdates.length > 0) {
-            filteredValues.push(id);
+            filteredValues.push(stationId);
             await new Promise((resolve, reject) => {
                 db.run(
                     `UPDATE fuel_stations SET ${filteredUpdates.join(", ")}${canUpdateUpdatedAt ? ", updated_at = CURRENT_TIMESTAMP" : ""} WHERE id = ?`,
@@ -217,7 +234,7 @@ export async function PATCH(request, props) {
         if (new_password) {
             // Find linked user_id
             const station = await new Promise((resolve, reject) => {
-                db.get(`SELECT user_id FROM fuel_stations WHERE id = ?`, [id], (err, row) => {
+                db.get(`SELECT user_id FROM fuel_stations WHERE id = ?`, [stationId], (err, row) => {
                     if (err) reject(err);
                     else resolve(row);
                 });
@@ -290,6 +307,19 @@ export async function DELETE(request, props) {
                     }
                 );
             });
+
+            if (linkedUserId && stationCols.has("user_id")) {
+                const syncValues = [...filteredValues.slice(0, filteredUpdates.length), linkedUserId, stationId];
+                await new Promise((resolve) => {
+                    db.run(
+                        `UPDATE fuel_stations
+                         SET ${filteredUpdates.join(", ")}${canUpdateUpdatedAt ? ", updated_at = CURRENT_TIMESTAMP" : ""}
+                         WHERE user_id = ? AND id != ?`,
+                        syncValues,
+                        () => resolve()
+                    );
+                });
+            }
         }
 
         // Delete dependent rows first to satisfy FK constraints in Postgres.
