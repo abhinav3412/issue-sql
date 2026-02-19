@@ -55,6 +55,28 @@ function normalizeContactNumber(value) {
   return "";
 }
 
+function isMockPayoutMode() {
+  const accountNumber = process.env.RAZORPAY_ACCOUNT_NUMBER || "";
+  const forceMock = String(process.env.FORCE_MOCK_PAYOUTS || "").toLowerCase();
+  const isForced = forceMock === "1" || forceMock === "true" || forceMock === "yes";
+  const invalidAccount =
+    !accountNumber ||
+    accountNumber === "your_razorpayx_account_number_here" ||
+    accountNumber.length < 10;
+  return isForced || invalidAccount;
+}
+
+function safeDecrypt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return decrypt(raw);
+  } catch {
+    // Legacy rows may contain plain text instead of encrypted value.
+    return raw;
+  }
+}
+
 function ensureFuelStationBankDetailsTable(db) {
   return new Promise((resolve) => {
     db.run(
@@ -112,8 +134,9 @@ async function settleStation(db, station) {
   const fuelStationId = station.id;
   const stationName = station.station_name || `Fuel Station ${fuelStationId}`;
   const now = getLocalDateTimeString();
+  const mockMode = isMockPayoutMode();
 
-  const pending = await new Promise((resolve, reject) => {
+  let pending = await new Promise((resolve, reject) => {
     db.all(
       `SELECT id, amount
        FROM fuel_station_ledger
@@ -125,6 +148,39 @@ async function settleStation(db, station) {
       (err, rows) => (err ? reject(err) : resolve(rows || []))
     );
   });
+
+  if (!pending.length && Number(station.pending_payout || 0) > 0) {
+    const carryAmount = Number(station.pending_payout || 0);
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO fuel_station_ledger
+         (fuel_station_id, transaction_type, amount, description, status, reference_id, created_at, updated_at)
+         VALUES (?, 'cod_settlement', ?, ?, 'pending', ?, ?, ?)`,
+        [
+          fuelStationId,
+          carryAmount,
+          "Auto-generated pending payout entry",
+          `AUTO_CARRY_${fuelStationId}_${Date.now()}`,
+          now,
+          now,
+        ],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    pending = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, amount
+         FROM fuel_station_ledger
+         WHERE fuel_station_id = ?
+           AND status = 'pending'
+           AND transaction_type IN ('sale', 'cod_settlement')
+         ORDER BY created_at ASC`,
+        [fuelStationId],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+  }
 
   if (!pending.length) {
     return {
@@ -140,17 +196,25 @@ async function settleStation(db, station) {
   const ledgerIds = pending.map((row) => row.id);
   const amountToSettle = pending.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const placeholders = ledgerIds.map(() => "?").join(",");
-  const accountNumber = normalizeAccountNumber(decrypt(station.account_number || ""));
-  const ifsc = normalizeIfsc(decrypt(station.ifsc_code || ""));
+  let accountNumber = normalizeAccountNumber(safeDecrypt(station.account_number || ""));
+  let ifsc = normalizeIfsc(safeDecrypt(station.ifsc_code || ""));
 
-  if (!station.account_number || !station.ifsc_code) {
+  if (!mockMode && (!station.account_number || !station.ifsc_code)) {
     throw new Error("Bank details missing. Please add account number and IFSC from station login.");
   }
-  if (!/^\d{9,18}$/.test(accountNumber)) {
+  if (!mockMode && !/^\d{9,18}$/.test(accountNumber)) {
     throw new Error("Invalid station account number. Please update bank details.");
   }
-  if (!isValidIfsc(ifsc)) {
+  if (!mockMode && !isValidIfsc(ifsc)) {
     throw new Error("Invalid station IFSC. Please update bank details.");
+  }
+  if (mockMode) {
+    if (!/^\d{9,18}$/.test(accountNumber)) {
+      accountNumber = String(900000000000 + Number(fuelStationId || 0));
+    }
+    if (!isValidIfsc(ifsc)) {
+      ifsc = "HDFC0000001";
+    }
   }
 
   let contactId = station.razorpay_contact_id;
@@ -158,10 +222,14 @@ async function settleStation(db, station) {
 
   if (!contactId) {
     const contactName = buildRazorpayContactName(station);
-    const contactNumber = normalizeContactNumber(station.phone_number);
+    let contactNumber = normalizeContactNumber(station.phone_number);
     const contactEmail = normalizeContactEmail(station.email, fuelStationId);
 
-    if (!contactNumber) {
+    if (!contactNumber && mockMode) {
+      contactNumber = "9999999999";
+    }
+
+    if (!contactNumber && !mockMode) {
       throw new Error(`Invalid station phone for payout contact (station ${fuelStationId}). Update station phone to a valid 10-digit number.`);
     }
 
@@ -273,7 +341,7 @@ export async function POST(request) {
 
     let query = `
       SELECT fs.id, COALESCE(fs.station_name, fs.name) AS station_name,
-             fs.email, fs.phone_number,
+             fs.email, fs.phone_number, COALESCE(fs.pending_payout, 0) AS pending_payout,
              bd.account_holder_name, bd.account_number, bd.ifsc_code, bd.bank_name,
              bd.razorpay_contact_id, bd.razorpay_fund_account_id
       FROM fuel_stations fs
@@ -291,7 +359,7 @@ export async function POST(request) {
     if (requestedStationId) {
       query = `
         SELECT fs.id, COALESCE(fs.station_name, fs.name) AS station_name,
-               fs.email, fs.phone_number,
+               fs.email, fs.phone_number, COALESCE(fs.pending_payout, 0) AS pending_payout,
                bd.account_holder_name, bd.account_number, bd.ifsc_code, bd.bank_name,
                bd.razorpay_contact_id, bd.razorpay_fund_account_id
         FROM fuel_stations fs
@@ -317,6 +385,7 @@ export async function POST(request) {
     }
 
     const results = {
+      mock_mode: isMockPayoutMode(),
       total_stations: eligibleStations.length,
       success_count: 0,
       failed_count: 0,

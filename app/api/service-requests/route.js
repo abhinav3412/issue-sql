@@ -800,23 +800,26 @@ export async function PATCH(request) {
     await new Promise((resolve) => {
       db.run("UPDATE fuel_stations SET cod_delivery_allowed = 1 WHERE cod_delivery_allowed IS NULL", () => resolve());
     });
+
+    const existingRequest = await new Promise((resolve) => {
+      db.get(
+        "SELECT id, status, assigned_worker FROM service_requests WHERE id = ?",
+        [id],
+        (err, row) => {
+          if (err) return resolve(null);
+          resolve(row || null);
+        }
+      );
+    });
+
+    if (!existingRequest) {
+      return NextResponse.json({ error: "Service request not found" }, { status: 404 });
+    }
+
+    const becameCompleted = status === "Completed" && existingRequest.status !== "Completed";
+
     if (assigned_worker != null && (status === "Assigned" || status === "In Progress")) {
-      const currentRequest = await new Promise((resolve) => {
-        db.get(
-          "SELECT id, status, assigned_worker FROM service_requests WHERE id = ?",
-          [id],
-          (err, row) => {
-            if (err) return resolve(null);
-            resolve(row || null);
-          }
-        );
-      });
-
-      if (!currentRequest) {
-        return NextResponse.json({ error: "Service request not found" }, { status: 404 });
-      }
-
-      if (currentRequest.assigned_worker && Number(currentRequest.assigned_worker) !== Number(assigned_worker)) {
+      if (existingRequest.assigned_worker && Number(existingRequest.assigned_worker) !== Number(assigned_worker)) {
         return NextResponse.json(
           { error: "Request already assigned to another worker", code: "REQUEST_ASSIGNED" },
           { status: 409 }
@@ -976,7 +979,7 @@ export async function PATCH(request) {
 
     const updated = await new Promise((resolve) => {
       db.get(
-        "SELECT user_id, payment_method FROM service_requests WHERE id = ?",
+        "SELECT user_id, payment_method, fuel_station_id FROM service_requests WHERE id = ?",
         [id],
         (err, row) => {
           if (err) return resolve(null);
@@ -986,7 +989,7 @@ export async function PATCH(request) {
     });
 
     // Create settlement record when order is completed
-    if (status === "Completed") {
+    if (becameCompleted) {
       const serviceRequestFull = await new Promise((resolve) => {
         db.get(
           "SELECT * FROM service_requests WHERE id = ?",
@@ -1062,11 +1065,24 @@ export async function PATCH(request) {
           const litres = settlement.customer.fuel_cost > 0 ? (serviceRequestFull.litres || originalDetails?.litres || (settlement.customer.fuel_cost / (serviceRequestFull.fuel_price || 100))) : 0;
 
           if (litres > 0) {
-            // 1. Decrease stock
+            // 1. Ensure station stock row exists for this fuel type
             await new Promise((resolve) => {
               db.run(
-                "UPDATE fuel_station_stock SET stock_litres = stock_litres - ?, updated_at = ? WHERE fuel_station_id = ? AND fuel_type = ?",
-                [litres, now, serviceRequestFull.fuel_station_id, serviceRequestFull.service_type],
+                `INSERT OR IGNORE INTO fuel_station_stock (fuel_station_id, fuel_type, stock_litres, updated_at)
+                 VALUES (?, ?, 0, ?)`,
+                [serviceRequestFull.fuel_station_id, serviceRequestFull.service_type, now],
+                () => resolve()
+              );
+            });
+
+            // 2. Decrease stock once on completion transition
+            await new Promise((resolve) => {
+              db.run(
+                `UPDATE fuel_station_stock
+                 SET stock_litres = CASE WHEN stock_litres - ? < 0 THEN 0 ELSE stock_litres - ? END,
+                     updated_at = ?
+                 WHERE fuel_station_id = ? AND fuel_type = ?`,
+                [litres, litres, now, serviceRequestFull.fuel_station_id, serviceRequestFull.service_type],
                 (err) => {
                   if (err) console.error("Stock update failed:", err);
                   resolve();
@@ -1141,7 +1157,7 @@ export async function PATCH(request) {
     }
 
     if (updated && updated.payment_method === "COD") {
-      if (status === "Completed") {
+      if (becameCompleted) {
         await new Promise((resolve) => {
           db.run(
             "UPDATE service_requests SET payment_status = 'PAID' WHERE id = ?",
