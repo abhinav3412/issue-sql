@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 const { getDB } = require("../../../../database/db");
 
+const isDuplicateColumnError = (err) =>
+  /duplicate column name|already exists|42701|ER_DUP_FIELDNAME/i.test(String(err?.message || ""));
+
 function ensureUserCodColumns(db) {
   const cols = [
     "trust_score REAL DEFAULT 50",
@@ -15,7 +18,7 @@ function ensureUserCodColumns(db) {
       (col) =>
         new Promise((resolve) => {
           db.run(`ALTER TABLE users ADD COLUMN ${col}`, (err) => {
-            if (err && !/duplicate column name/i.test(err.message)) {
+            if (err && !isDuplicateColumnError(err)) {
               console.error(`Add users.${col} failed:`, err);
             }
             resolve();
