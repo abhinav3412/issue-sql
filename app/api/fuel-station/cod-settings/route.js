@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 const { getDB, getLocalDateTimeString } = require("../../../../database/db");
 const { requireAuth } = require("../../../../database/auth-middleware");
 
+function flagEnabled(value, defaultWhenNull = false) {
+  if (value === null || value === undefined) return defaultWhenNull;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "t" || normalized === "yes";
+}
+
 function hasTableColumn(db, tableName, colName) {
   return new Promise((resolve) => {
     db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
@@ -242,13 +250,14 @@ export async function GET(request) {
         cod_settings: {
           station_id: station.id,
           station_name: station.station_name,
-          cod_enabled: station.cod_enabled === 1,
-          is_verified: station.is_verified === 1,
+          cod_enabled: flagEnabled(station.cod_enabled, false),
+          is_verified: flagEnabled(station.is_verified, false),
           cod_current_balance: computedCurrentBalance,
-          cod_balance_limit: station.cod_balance_limit,
-          platform_trust_flag: station.platform_trust_flag === 1,
-          can_accept_cod: station.cod_enabled === 1 && station.platform_trust_flag === 1 && 
-                          computedCurrentBalance < station.cod_balance_limit,
+          cod_balance_limit: Number(station.cod_balance_limit || 0),
+          platform_trust_flag: flagEnabled(station.platform_trust_flag, false),
+          can_accept_cod: flagEnabled(station.cod_enabled, false) &&
+            flagEnabled(station.platform_trust_flag, false) &&
+            computedCurrentBalance < Number(station.cod_balance_limit || 0),
         },
         pending_cod: {
           count: pending_cod.count || 0,
