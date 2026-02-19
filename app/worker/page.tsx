@@ -132,11 +132,7 @@ export default function WorkerDashboardPage() {
       if (!hasActive) {
         try {
           localStorage.setItem("worker_prev_status", worker.status || "Available");
-          await fetch("/api/workers", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: worker.id, status: "Offline" }),
-          });
+          await updateWorkerStatus(worker.id, "Offline");
         } catch {
           // ignore logout status update failures
         }
@@ -160,6 +156,43 @@ export default function WorkerDashboardPage() {
     }
   }, [worker?.id]);
 
+  const refreshWorker = useCallback(async (workerId: number) => {
+    try {
+      const res = await fetch(`/api/workers?id=${workerId}`);
+      if (!res.ok) return null;
+      const workerData = await res.json();
+      setWorker(workerData);
+      return workerData;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const updateWorkerStatus = useCallback(
+    async (workerId: number, status: "Available" | "Busy" | "Offline") => {
+      try {
+        const res = await fetch("/api/workers", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: workerId, status }),
+        });
+        if (res.ok) {
+          await refreshWorker(workerId);
+          return true;
+        }
+
+        const data = await res.json().catch(() => null);
+        if (res.status === 403 && data?.locked) {
+          await refreshWorker(workerId);
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [refreshWorker]
+  );
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -177,13 +210,11 @@ export default function WorkerDashboardPage() {
                 workerData?.status === "Offline" &&
                 !workerData?.status_locked
               ) {
-                await fetch("/api/workers", {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ id: workerData.id, status: prevStatus }),
-                });
-                localStorage.removeItem("worker_prev_status");
-                setWorker({ ...workerData, status: prevStatus });
+                const normalizedPrev = prevStatus === "Busy" ? "Busy" : "Available";
+                const restored = await updateWorkerStatus(workerData.id, normalizedPrev);
+                if (restored) {
+                  localStorage.removeItem("worker_prev_status");
+                }
               }
             }
           }
@@ -283,11 +314,7 @@ export default function WorkerDashboardPage() {
       if (res.ok) {
         // If completing, set worker back to Available
         if (newStatus === "Completed" && worker) {
-          await fetch("/api/workers", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: worker.id, status: "Available" }),
-          });
+          await updateWorkerStatus(worker.id, "Available");
         }
         fetchTasks();
       }
@@ -317,11 +344,7 @@ export default function WorkerDashboardPage() {
             r.id === requestId ? { ...r, status: "Assigned", assigned_worker: Number(worker.id) } : r
           )
         );
-        await fetch("/api/workers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: worker.id, status: "Busy" }),
-        });
+        await updateWorkerStatus(worker.id, "Busy");
         setSummaryTab("Active Tasks");
         fetchTasks();
       } else {
@@ -370,11 +393,7 @@ export default function WorkerDashboardPage() {
 
       if (res.ok) {
         // 2. Set worker back to Available
-        await fetch("/api/workers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: worker.id, status: "Available" }),
-        });
+        await updateWorkerStatus(worker.id, "Available");
         fetchTasks();
       }
     } catch (err) {

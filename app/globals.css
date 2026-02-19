@@ -4458,6 +4458,12 @@ button {
   color: #ffffff;
 }
 
+.admin-modal-row select option,
+.admin-modal-row select optgroup {
+  background: #ffffff;
+  color: #111827;
+}
+
 .admin-role-readonly {
   padding: 0.5rem 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.05);
