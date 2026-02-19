@@ -1,6 +1,120 @@
 import { NextResponse } from "next/server";
 const { getDB, getLocalDateTimeString } = require("../../../../database/db");
 
+function hasTableColumn(db, tableName, colName) {
+  return new Promise((resolve) => {
+    db.all(`PRAGMA table_info(${tableName})`, [], (err, rows) => {
+      if (err) return resolve(false);
+      const found = (rows || []).some(
+        (c) => String(c.name || "").toLowerCase() === String(colName).toLowerCase()
+      );
+      resolve(found);
+    });
+  });
+}
+
+async function findStationByIdOrUserId(db, idValue) {
+  let station = await new Promise((resolve) => {
+    db.get(
+      `SELECT 
+        id, station_name, cod_enabled, cod_current_balance, 
+        cod_balance_limit, platform_trust_flag
+       FROM fuel_stations
+       WHERE id = ?`,
+      [idValue],
+      (err, row) => resolve(row || null)
+    );
+  });
+
+  if (!station) {
+    station = await new Promise((resolve) => {
+      db.get(
+        `SELECT 
+          id, station_name, cod_enabled, cod_current_balance, 
+          cod_balance_limit, platform_trust_flag
+         FROM fuel_stations
+         WHERE user_id = ?`,
+        [idValue],
+        (err, row) => resolve(row || null)
+      );
+    });
+  }
+
+  return station;
+}
+
+async function ensureStationRowForUser(db, userId) {
+  const user = await new Promise((resolve) => {
+    db.get(
+      "SELECT id, first_name, last_name, role FROM users WHERE id = ?",
+      [userId],
+      (err, row) => resolve(row || null)
+    );
+  });
+
+  if (!user) return null;
+
+  const hasUserId = await hasTableColumn(db, "fuel_stations", "user_id");
+  const hasStationName = await hasTableColumn(db, "fuel_stations", "station_name");
+  const hasCodEnabled = await hasTableColumn(db, "fuel_stations", "cod_enabled");
+  const hasCodCurrentBalance = await hasTableColumn(db, "fuel_stations", "cod_current_balance");
+  const hasCodBalanceLimit = await hasTableColumn(db, "fuel_stations", "cod_balance_limit");
+  const hasPlatformTrustFlag = await hasTableColumn(db, "fuel_stations", "platform_trust_flag");
+  const hasCreatedAt = await hasTableColumn(db, "fuel_stations", "created_at");
+  const hasUpdatedAt = await hasTableColumn(db, "fuel_stations", "updated_at");
+
+  const now = getLocalDateTimeString();
+  const inferredName = `${(user.first_name || "Fuel").toString()} ${(user.last_name || "Station").toString()}`.trim();
+
+  const cols = [];
+  const vals = [];
+  if (hasUserId) {
+    cols.push("user_id");
+    vals.push(user.id);
+  }
+  if (hasStationName) {
+    cols.push("station_name");
+    vals.push(inferredName || `Station ${user.id}`);
+  }
+  if (hasCodEnabled) {
+    cols.push("cod_enabled");
+    vals.push(1);
+  }
+  if (hasCodCurrentBalance) {
+    cols.push("cod_current_balance");
+    vals.push(0);
+  }
+  if (hasCodBalanceLimit) {
+    cols.push("cod_balance_limit");
+    vals.push(50000);
+  }
+  if (hasPlatformTrustFlag) {
+    cols.push("platform_trust_flag");
+    vals.push(1);
+  }
+  if (hasCreatedAt) {
+    cols.push("created_at");
+    vals.push(now);
+  }
+  if (hasUpdatedAt) {
+    cols.push("updated_at");
+    vals.push(now);
+  }
+
+  if (cols.length === 0) return null;
+
+  await new Promise((resolve) => {
+    const placeholders = cols.map(() => "?").join(", ");
+    db.run(
+      `INSERT INTO fuel_stations (${cols.join(", ")}) VALUES (${placeholders})`,
+      vals,
+      () => resolve()
+    );
+  });
+
+  return findStationByIdOrUserId(db, user.id);
+}
+
 // Get COD settings
 export async function GET(request) {
   try {
@@ -16,31 +130,9 @@ export async function GET(request) {
 
     const db = getDB();
 
-    let station = await new Promise((resolve) => {
-      db.get(
-        `SELECT 
-          id, station_name, cod_enabled, cod_current_balance, 
-          cod_balance_limit, platform_trust_flag
-         FROM fuel_stations
-         WHERE id = ?`,
-        [fuel_station_id],
-        (err, row) => resolve(row || null)
-      );
-    });
-
-    // Compatibility: some clients send auth user.id instead of fuel_stations.id.
+    let station = await findStationByIdOrUserId(db, fuel_station_id);
     if (!station) {
-      station = await new Promise((resolve) => {
-        db.get(
-          `SELECT 
-            id, station_name, cod_enabled, cod_current_balance, 
-            cod_balance_limit, platform_trust_flag
-           FROM fuel_stations
-           WHERE user_id = ?`,
-          [fuel_station_id],
-          (err, row) => resolve(row || null)
-        );
-      });
+      station = await ensureStationRowForUser(db, fuel_station_id);
     }
 
     if (!station) {
@@ -123,21 +215,9 @@ export async function PATCH(request) {
     const updatedAt = getLocalDateTimeString();
 
     // Accept either fuel_stations.id or fuel_stations.user_id.
-    let station = await new Promise((resolve) => {
-      db.get(
-        "SELECT id FROM fuel_stations WHERE id = ?",
-        [fuel_station_id],
-        (err, row) => resolve(row || null)
-      );
-    });
+    let station = await findStationByIdOrUserId(db, fuel_station_id);
     if (!station) {
-      station = await new Promise((resolve) => {
-        db.get(
-          "SELECT id FROM fuel_stations WHERE user_id = ?",
-          [fuel_station_id],
-          (err, row) => resolve(row || null)
-        );
-      });
+      station = await ensureStationRowForUser(db, fuel_station_id);
     }
 
     if (!station) {

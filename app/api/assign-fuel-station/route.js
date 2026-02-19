@@ -7,6 +7,16 @@ const {
 } = require("../../../database/fuel-station-selector");
 const { haversineDistance } = require("../../../database/distance-calculator");
 
+function normalizeStationShape(station) {
+  if (!station) return null;
+  return {
+    ...station,
+    name: station.station_name || station.name || `Station ${station.id}`,
+    lat: station.latitude ?? station.lat ?? null,
+    lng: station.longitude ?? station.lng ?? null,
+  };
+}
+
 /**
  * POST /api/assign-fuel-station
  * Assign nearest fuel station to a worker
@@ -109,14 +119,15 @@ export async function POST(request) {
         });
 
         if (station) {
+          const mapped = normalizeStationShape(station);
           return NextResponse.json({
             success: true,
-            fuel_station_id: station.id,
-            name: station.name,
-            lat: station.lat,
-            lng: station.lng,
+            fuel_station_id: mapped.id,
+            name: mapped.name,
+            lat: mapped.lat,
+            lng: mapped.lng,
             distance_km: cachedAssignment.distance_km,
-            supports_cod: station.cod_supported === 1,
+            supports_cod: mapped.cod_supported === 1,
             cached: true,
             cached_at: cachedAssignment.assigned_at,
           });
@@ -157,11 +168,11 @@ export async function POST(request) {
             fallback_station: selection.fallback || null,
           },
         },
-        { status: 404 }
+        { status: 200 }
       );
     }
 
-    const station = selection.station;
+    const station = normalizeStationShape(selection.station);
 
     // Step 3: Create assignment record
     await new Promise((resolve) => {
