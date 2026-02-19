@@ -5,11 +5,33 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET!,
 });
 
+function isMockPayoutMode() {
+    const accountNumber = process.env.RAZORPAY_ACCOUNT_NUMBER || '';
+    const forceMock = String(process.env.FORCE_MOCK_PAYOUTS || '').toLowerCase();
+    const isForced = forceMock === '1' || forceMock === 'true' || forceMock === 'yes';
+    const invalidAccount = !accountNumber ||
+        accountNumber === 'your_razorpayx_account_number_here' ||
+        accountNumber.length < 10;
+    return isForced || invalidAccount;
+}
+
 // Razorpay Payouts (RazorpayX) endpoints often require basic auth and a specific body.
 // The Payouts API is a bit different from the standard payments API.
 
 export async function createRazorpayContact(data: { name: string; email: string; contact: string }) {
     try {
+        if (isMockPayoutMode()) {
+            return {
+                id: `mock_contact_${Date.now()}`,
+                entity: 'contact',
+                name: data.name,
+                email: data.email,
+                contact: data.contact,
+                type: 'vendor',
+                active: true,
+            };
+        }
+
         const response = await fetch('https://api.razorpay.com/v1/contacts', {
             method: 'POST',
             headers: {
@@ -34,6 +56,21 @@ export async function createRazorpayContact(data: { name: string; email: string;
 
 export async function createRazorpayFundAccount(contact_id: string, bank_details: { name: string; ifsc: string; account_number: string }) {
     try {
+        if (isMockPayoutMode()) {
+            return {
+                id: `mock_fund_${Date.now()}`,
+                entity: 'fund_account',
+                contact_id,
+                account_type: 'bank_account',
+                active: true,
+                bank_account: {
+                    name: bank_details.name,
+                    ifsc: bank_details.ifsc,
+                    account_number: bank_details.account_number,
+                },
+            };
+        }
+
         const response = await fetch('https://api.razorpay.com/v1/fund_accounts', {
             method: 'POST',
             headers: {
@@ -62,11 +99,7 @@ export async function createRazorpayFundAccount(contact_id: string, bank_details
 export async function createRazorpayPayout(data: { fund_account_id: string; amount: number; reference_id: string }) {
     try {
         const accountNumber = process.env.RAZORPAY_ACCOUNT_NUMBER || '';
-
-        // Check if RazorpayX is properly configured
-        const isTestMode = !accountNumber ||
-            accountNumber === 'your_razorpayx_account_number_here' ||
-            accountNumber.length < 10;
+        const isTestMode = isMockPayoutMode();
 
         if (isTestMode) {
             // Mock payout for testing when RazorpayX is not configured
@@ -84,11 +117,11 @@ export async function createRazorpayPayout(data: { fund_account_id: string; amou
                 fund_account_id: data.fund_account_id,
                 amount: Math.round(data.amount * 100),
                 currency: 'INR',
-                status: 'processing',
+                status: 'processed',
                 purpose: 'payout',
                 mode: 'IMPS',
                 reference_id: data.reference_id,
-                narration: 'Mock payout - RazorpayX not configured',
+                narration: 'Mock payout - auto processed',
                 created_at: Math.floor(Date.now() / 1000)
             };
         }
