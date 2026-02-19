@@ -36,6 +36,26 @@ async function getTableColumns(db, tableName) {
     return new Set(rows.map((r) => String(r.name || "").toLowerCase()));
 }
 
+async function resolveStationRow(db, rawId) {
+    const byId = await new Promise((resolve, reject) => {
+        db.get("SELECT id, user_id FROM fuel_stations WHERE id = ?", [rawId], (err, row) => {
+            if (err) return reject(err);
+            resolve(row || null);
+        });
+    });
+    if (byId) return byId;
+
+    const cols = await getTableColumns(db, "fuel_stations");
+    if (!cols.has("user_id")) return null;
+
+    return new Promise((resolve, reject) => {
+        db.get("SELECT id, user_id FROM fuel_stations WHERE user_id = ?", [rawId], (err, row) => {
+            if (err) return reject(err);
+            resolve(row || null);
+        });
+    });
+}
+
 export async function GET(request, props) {
     const params = await props.params;
     const { id } = params;
@@ -245,6 +265,15 @@ export async function DELETE(request, props) {
     const db = getDB();
 
     try {
+        const station = await resolveStationRow(db, id);
+        if (!station) {
+            return NextResponse.json(
+                { success: false, error: "Fuel station not found" },
+                { status: 404 }
+            );
+        }
+        const stationId = station.id;
+
         // Delete dependent rows first to satisfy FK constraints in Postgres.
         const dependentDeletes = [
             "DELETE FROM fuel_station_bank_details WHERE fuel_station_id = ?",
@@ -258,20 +287,27 @@ export async function DELETE(request, props) {
 
         for (const sql of dependentDeletes) {
             await new Promise((resolve) => {
-                db.run(sql, [id], () => resolve());
+                db.run(sql, [stationId], () => resolve());
             });
         }
 
-        await new Promise((resolve, reject) => {
+        const deleted = await new Promise((resolve, reject) => {
             db.run(
                 `DELETE FROM fuel_stations WHERE id = ?`,
-                [id],
+                [stationId],
                 function (err) {
                     if (err) reject(err);
                     else resolve(this.changes);
                 }
             );
         });
+
+        if (Number(deleted || 0) === 0) {
+            return NextResponse.json(
+                { success: false, error: "Fuel station was not deleted" },
+                { status: 409 }
+            );
+        }
 
         return NextResponse.json(
             { success: true, message: "Station deleted successfully" },
