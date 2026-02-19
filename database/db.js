@@ -209,35 +209,38 @@ function createPostgresAdapter() {
     ? rejectUnauthorizedEnv !== "false"
     : false;
   const ssl = sslEnabled ? { rejectUnauthorized } : undefined;
-  let dbUrl = dbUrlRaw;
-  if (dbUrl) {
+  const baseConfig = {
+    max: Number(readEnv("DB_POOL_SIZE") || 10),
+    ssl,
+  };
+
+  let poolConfig = null;
+  if (dbUrlRaw) {
     try {
-      const parsed = new URL(dbUrl);
-      // Prevent pg from overriding SSL behavior from URL params.
-      parsed.searchParams.delete("sslmode");
-      parsed.searchParams.delete("sslcert");
-      parsed.searchParams.delete("sslkey");
-      parsed.searchParams.delete("sslrootcert");
-      dbUrl = parsed.toString();
+      const parsed = new URL(dbUrlRaw);
+      poolConfig = {
+        ...baseConfig,
+        host: parsed.hostname,
+        port: Number(parsed.port || 5432),
+        user: decodeURIComponent(parsed.username || ""),
+        password: decodeURIComponent(parsed.password || ""),
+        database: decodeURIComponent((parsed.pathname || "/").replace(/^\//, "")) || "postgres",
+      };
     } catch (e) {
-      dbUrl = dbUrlRaw;
+      poolConfig = null;
     }
   }
 
-  const pool = dbUrl
-    ? new Pool({
-        connectionString: dbUrl,
-        ssl,
-      })
-    : new Pool({
-        host: readEnv("DB_HOST"),
-        user: readEnv("DB_USER"),
-        password: readEnv("DB_PASSWORD") || "",
-        database: readEnv("DB_NAME"),
-        port: Number(readEnv("DB_PORT") || 5432),
-        max: Number(readEnv("DB_POOL_SIZE") || 10),
-        ssl,
-      });
+  const pool = new Pool(
+    poolConfig || {
+      ...baseConfig,
+      host: readEnv("DB_HOST"),
+      user: readEnv("DB_USER"),
+      password: readEnv("DB_PASSWORD") || "",
+      database: readEnv("DB_NAME"),
+      port: Number(readEnv("DB_PORT") || 5432),
+    }
+  );
   console.log("Connected to PostgreSQL database");
 
   const adapter = {
