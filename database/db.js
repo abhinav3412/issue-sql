@@ -330,9 +330,10 @@ function createPostgresAdapter() {
   const rejectUnauthorizedEnv = readEnv("DB_SSL_REJECT_UNAUTHORIZED").toLowerCase();
   const urlNoVerify = urlSslMode === "no-verify";
   const sslCa = readEnv("DB_SSL_CA");
+  const strictSsl = readEnv("DB_SSL_STRICT").toLowerCase() === "true";
   const rejectUnauthorized = rejectUnauthorizedEnv
     ? rejectUnauthorizedEnv !== "false"
-    : (sslCa ? true : !urlNoVerify);
+    : (strictSsl || Boolean(sslCa) ? true : false);
   const ssl = sslEnabled
     ? (sslCa
       ? { rejectUnauthorized, ca: sslCa.replace(/\\n/g, "\n") }
@@ -340,8 +341,13 @@ function createPostgresAdapter() {
     : undefined;
 
   // Ensure pg does not silently pick stricter SSL semantics from ambient env.
-  if (sslEnabled && !readEnv("PGSSLMODE")) {
+  if (sslEnabled) {
     process.env.PGSSLMODE = rejectUnauthorized ? "verify-full" : "no-verify";
+    if (!rejectUnauthorized) {
+      delete process.env.PGSSLROOTCERT;
+      delete process.env.PGSSLCERT;
+      delete process.env.PGSSLKEY;
+    }
   }
   const baseConfig = {
     max: Number(readEnv("DB_POOL_SIZE") || 10),
