@@ -184,22 +184,34 @@ function createMySQLAdapter() {
 
 function createPostgresAdapter() {
   assertDatabaseConfig();
-  const dbUrl = String(process.env.DATABASE_URL || "");
+  const dbUrlRaw = String(process.env.DATABASE_URL || "");
   const dbHost = String(process.env.DB_HOST || "");
-  const isSupabase = /supabase\.com/i.test(dbUrl) || /supabase\.com/i.test(dbHost);
+  const isSupabase = /supabase\.com/i.test(dbUrlRaw) || /supabase\.com/i.test(dbHost);
   const sslEnabled =
     String(process.env.DB_SSL || "").trim().toLowerCase() === "true" ||
-    /sslmode=require/i.test(dbUrl) ||
+    /sslmode=require/i.test(dbUrlRaw) ||
     isSupabase;
   const rejectUnauthorizedEnv = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "").trim().toLowerCase();
   const rejectUnauthorized = rejectUnauthorizedEnv
     ? rejectUnauthorizedEnv !== "false"
     : false;
   const ssl = sslEnabled ? { rejectUnauthorized } : undefined;
+  let dbUrl = dbUrlRaw;
+  if (dbUrl) {
+    try {
+      const parsed = new URL(dbUrl);
+      if (sslEnabled && !rejectUnauthorized) {
+        parsed.searchParams.set("sslmode", "no-verify");
+      }
+      dbUrl = parsed.toString();
+    } catch (e) {
+      dbUrl = dbUrlRaw;
+    }
+  }
 
-  const pool = process.env.DATABASE_URL
+  const pool = dbUrl
     ? new Pool({
-        connectionString: process.env.DATABASE_URL,
+        connectionString: dbUrl,
         ssl,
       })
     : new Pool({
