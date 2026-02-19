@@ -184,11 +184,17 @@ function createMySQLAdapter() {
 
 function createPostgresAdapter() {
   assertDatabaseConfig();
+  const dbUrl = String(process.env.DATABASE_URL || "");
+  const dbHost = String(process.env.DB_HOST || "");
+  const isSupabase = /supabase\.com/i.test(dbUrl) || /supabase\.com/i.test(dbHost);
   const sslEnabled =
     String(process.env.DB_SSL || "").trim().toLowerCase() === "true" ||
-    /sslmode=require/i.test(String(process.env.DATABASE_URL || ""));
-  const rejectUnauthorized =
-    String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "").trim().toLowerCase() !== "false";
+    /sslmode=require/i.test(dbUrl) ||
+    isSupabase;
+  const rejectUnauthorizedEnv = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "").trim().toLowerCase();
+  const rejectUnauthorized = rejectUnauthorizedEnv
+    ? rejectUnauthorizedEnv !== "false"
+    : !(isSupabase || /sslmode=require/i.test(dbUrl));
   const ssl = sslEnabled ? { rejectUnauthorized } : undefined;
 
   const pool = process.env.DATABASE_URL
