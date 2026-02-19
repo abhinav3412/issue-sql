@@ -51,6 +51,13 @@ type WorkerPayout = {
 const ACTIVE_STATUSES = ["Assigned", "In Progress"];
 const HISTORY_STATUSES = ["Completed", "Cancelled"];
 
+function sameNumericId(a: number | string | null | undefined, b: number | string | null | undefined) {
+  if (a == null || b == null) return false;
+  const na = Number(a);
+  const nb = Number(b);
+  return Number.isFinite(na) && Number.isFinite(nb) && na === nb;
+}
+
 // Helper for distance calculation (metres) using Haversine formula
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371e3; // Earth radius in metres
@@ -305,6 +312,11 @@ export default function WorkerDashboardPage() {
       });
 
       if (res.ok) {
+        setServiceRequests((prev) =>
+          prev.map((r) =>
+            r.id === requestId ? { ...r, status: "Assigned", assigned_worker: Number(worker.id) } : r
+          )
+        );
         await fetch("/api/workers", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -442,12 +454,12 @@ export default function WorkerDashboardPage() {
   const isOffline = worker?.status === "Offline";
   const isVerified = !!worker?.verified;
 
-  const activeTasks = serviceRequests.filter((r) =>
-    r.assigned_worker === worker?.id && ACTIVE_STATUSES.includes(r.status)
+  const activeTasks = serviceRequests.filter(
+    (r) => sameNumericId(r.assigned_worker, worker?.id) && ACTIVE_STATUSES.includes(r.status)
   );
 
-  const historyTasks = serviceRequests.filter((r) =>
-    r.assigned_worker === worker?.id && HISTORY_STATUSES.includes(r.status)
+  const historyTasks = serviceRequests.filter(
+    (r) => sameNumericId(r.assigned_worker, worker?.id) && HISTORY_STATUSES.includes(r.status)
   );
 
   const hasActiveTask = activeTasks.length > 0;
