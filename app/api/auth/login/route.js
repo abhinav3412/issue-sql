@@ -3,6 +3,56 @@ const { getDB, getLocalDateTimeString } = require("../../../../database/db");
 const { generateToken } = require("../../../../database/auth-middleware");
 const bcrypt = require("bcryptjs");
 
+async function ensureAuthTables(db) {
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      first_name VARCHAR(100) NOT NULL,
+      last_name VARCHAR(100) NOT NULL,
+      phone_number VARCHAR(20),
+      role VARCHAR(20) DEFAULT 'User',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS workers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      first_name VARCHAR(100) NOT NULL,
+      last_name VARCHAR(100) NOT NULL,
+      phone_number VARCHAR(20),
+      status VARCHAR(20) DEFAULT 'Available',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS fuel_stations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE,
+      station_name VARCHAR(255),
+      is_verified INTEGER DEFAULT 0,
+      cod_enabled INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type VARCHAR(50) NOT NULL,
+      message TEXT,
+      entity_type VARCHAR(50),
+      entity_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+  ];
+
+  for (const sql of statements) {
+    await new Promise((resolve, reject) => {
+      db.run(sql, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -16,6 +66,7 @@ export async function POST(request) {
     }
 
     const db = getDB();
+    await ensureAuthTables(db);
     
     // Route to appropriate table based on role
     let user = null;
