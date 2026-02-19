@@ -57,9 +57,9 @@ async function ensurePayoutSchema(db) {
     }
 }
 
-async function hasLedgerColumn(db, colName) {
+async function hasTableColumn(db, tableName, colName) {
     const rows = await new Promise((resolve) => {
-        db.all("PRAGMA table_info(fuel_station_ledger)", [], (err, r) => {
+        db.all(`PRAGMA table_info(${tableName})`, [], (err, r) => {
             if (err) return resolve([]);
             resolve(r || []);
         });
@@ -80,13 +80,14 @@ export async function GET(request) {
 
         const db = getDB();
         await ensurePayoutSchema(db);
-        const hasTransactionType = await hasLedgerColumn(db, "transaction_type");
+        const hasTransactionType = await hasTableColumn(db, "fuel_station_ledger", "transaction_type");
+        const hasStationEmail = await hasTableColumn(db, "fuel_stations", "email");
 
         let query = `
       SELECT 
         l.id, l.fuel_station_id, ${hasTransactionType ? "l.transaction_type" : "'sale' AS transaction_type"}, l.amount, 
         l.description, l.status, l.created_at,
-        COALESCE(fs.station_name, fs.name) AS station_name, fs.email
+        COALESCE(fs.station_name, fs.name) AS station_name, ${hasStationEmail ? "fs.email" : "NULL AS email"}
       FROM fuel_station_ledger l
       JOIN fuel_stations fs ON l.fuel_station_id = fs.id
       WHERE 1=1
@@ -150,7 +151,7 @@ export async function POST(request) {
 
         const db = getDB();
         await ensurePayoutSchema(db);
-        const hasTransactionType = await hasLedgerColumn(db, "transaction_type");
+        const hasTransactionType = await hasTableColumn(db, "fuel_station_ledger", "transaction_type");
         const updatedAt = getLocalDateTimeString();
 
         // Calculate total amount to settle for only pending earning entries.
