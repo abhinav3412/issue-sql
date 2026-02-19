@@ -181,13 +181,6 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const fuel_station_id = searchParams.get("fuel_station_id");
 
-    if (!fuel_station_id) {
-      return NextResponse.json(
-        { success: false, error: "fuel_station_id is required" },
-        { status: 400 }
-      );
-    }
-
     const db = getDB();
 
     const station = await resolveStationFromAuthOrParam(db, request, fuel_station_id);
@@ -195,10 +188,23 @@ export async function GET(request) {
     if (!station) {
       return NextResponse.json(
         {
-          success: false,
-          error: "Fuel station not found for this account",
+          success: true,
+          cod_settings: {
+            station_id: Number(fuel_station_id || 0),
+            station_name: "Station",
+            cod_enabled: false,
+            cod_current_balance: 0,
+            cod_balance_limit: 50000,
+            platform_trust_flag: false,
+            can_accept_cod: false,
+          },
+          pending_cod: {
+            count: 0,
+            total_pending: 0,
+          },
+          warning: "Fuel station not found for this account",
         },
-        { status: 404 }
+        { status: 200 }
       );
     }
 
@@ -263,13 +269,6 @@ export async function PATCH(request) {
   try {
     const body = await request.json();
     const { fuel_station_id, cod_enabled, cod_balance_limit } = body || {};
-
-    if (!fuel_station_id) {
-      return NextResponse.json(
-        { success: false, error: "fuel_station_id is required" },
-        { status: 400 }
-      );
-    }
 
     const db = getDB();
     const updatedAt = getLocalDateTimeString();
