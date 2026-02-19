@@ -194,7 +194,7 @@ function createPostgresAdapter() {
   const rejectUnauthorizedEnv = String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "").trim().toLowerCase();
   const rejectUnauthorized = rejectUnauthorizedEnv
     ? rejectUnauthorizedEnv !== "false"
-    : !(isSupabase || /sslmode=require/i.test(dbUrl));
+    : false;
   const ssl = sslEnabled ? { rejectUnauthorized } : undefined;
 
   const pool = process.env.DATABASE_URL
