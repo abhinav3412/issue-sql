@@ -1,5 +1,7 @@
 const mysql = require("mysql2/promise");
 const { Pool } = require("pg");
+const sqlite3 = require("sqlite3").verbose();
+const path = require("path");
 
 let dbAdapter;
 
@@ -34,11 +36,13 @@ function assertDatabaseConfig() {
 
 function detectClient() {
   const explicit = readEnv("DB_CLIENT").toLowerCase();
-  if (explicit === "mysql" || explicit === "postgres" || explicit === "postgresql") return explicit;
+  if (explicit === "sqlite" || explicit === "mysql" || explicit === "postgres" || explicit === "postgresql") {
+    return explicit === "postgresql" ? "postgres" : explicit;
+  }
   const url = readEnv("DATABASE_URL").toLowerCase();
   if (url.startsWith("mysql://")) return "mysql";
   if (url.startsWith("postgres://") || url.startsWith("postgresql://")) return "postgres";
-  return "postgres";
+  return "sqlite";
 }
 
 function parseQueryArgs(paramsOrCb, cb) {
@@ -120,6 +124,104 @@ function maybeAddReturningClause(sql) {
     : `${trimmed} RETURNING *`;
 }
 
+function demoFallbackEnabled() {
+  return readEnv("DB_DEMO_FALLBACK").toLowerCase() === "true";
+}
+
+function withDemoFallbackRun(callback) {
+  const ctx = { lastID: 0, changes: 0 };
+  callback.call(ctx, null);
+}
+
+function createSQLiteAdapter() {
+  const dbPath = path.join(process.cwd(), "database", "agf_database.db");
+  const sqlite = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+      console.error("SQLite open error:", err.message);
+    } else {
+      console.log("Connected to SQLite database at", dbPath);
+    }
+  });
+
+  return {
+    type: "sqlite",
+    serialize(fn) {
+      if (typeof fn === "function") sqlite.serialize(fn);
+    },
+    prepare(sql) {
+      return sqlite.prepare(sql);
+    },
+    exec(sql, cb) {
+      sqlite.exec(sql, cb);
+      return this;
+    },
+    run(sql, paramsOrCb, cb) {
+      const { params, callback } = parseQueryArgs(paramsOrCb, cb);
+      sqlite.run(sql, params, function (err) {
+        if (err) return callback(err);
+        callback.call(this, null);
+      });
+      return this;
+    },
+    get(sql, paramsOrCb, cb) {
+      const { params, callback } = parseQueryArgs(paramsOrCb, cb);
+      sqlite.get(sql, params, callback);
+      return this;
+    },
+    all(sql, paramsOrCb, cb) {
+      const { params, callback } = parseQueryArgs(paramsOrCb, cb);
+      sqlite.all(sql, params, callback);
+      return this;
+    },
+    close(cb) {
+      sqlite.close(cb);
+    },
+  };
+}
+
+function createDemoAdapter() {
+  console.warn("DB demo fallback enabled: using no-op adapter.");
+  return {
+    type: "demo",
+    serialize(fn) {
+      if (typeof fn === "function") fn();
+    },
+    prepare() {
+      return {
+        run(paramsOrCb, cb) {
+          const callback = typeof paramsOrCb === "function" ? paramsOrCb : cb;
+          if (typeof callback === "function") withDemoFallbackRun(callback);
+        },
+        finalize(cb2) {
+          if (typeof cb2 === "function") cb2(null);
+        },
+      };
+    },
+    exec(sql, cb) {
+      if (typeof cb === "function") cb(null);
+      return this;
+    },
+    run(sql, paramsOrCb, cb) {
+      const { callback } = parseQueryArgs(paramsOrCb, cb);
+      withDemoFallbackRun(callback);
+      return this;
+    },
+    get(sql, paramsOrCb, cb) {
+      const { callback } = parseQueryArgs(paramsOrCb, cb);
+      callback(null, undefined);
+      return this;
+    },
+    all(sql, paramsOrCb, cb) {
+      const { callback } = parseQueryArgs(paramsOrCb, cb);
+      callback(null, []);
+      return this;
+    },
+    close(cb) {
+      if (typeof cb === "function") cb(null);
+    },
+  };
+}
+
 function createMySQLAdapter() {
   assertDatabaseConfig();
   const databaseUrl = readEnv("DATABASE_URL");
@@ -164,21 +266,30 @@ function createMySQLAdapter() {
           };
           callback.call(ctx, null);
         })
-        .catch((err) => callback(err));
+        .catch((err) => {
+          if (demoFallbackEnabled()) return withDemoFallbackRun(callback);
+          callback(err);
+        });
       return adapter;
     },
     get(sql, paramsOrCb, cb) {
       const { params, callback } = parseQueryArgs(paramsOrCb, cb);
       pool.query(sql, params)
         .then(([rows]) => callback(null, Array.isArray(rows) ? (rows[0] || undefined) : undefined))
-        .catch((err) => callback(err));
+        .catch((err) => {
+          if (demoFallbackEnabled()) return callback(null, undefined);
+          callback(err);
+        });
       return adapter;
     },
     all(sql, paramsOrCb, cb) {
       const { params, callback } = parseQueryArgs(paramsOrCb, cb);
       pool.query(sql, params)
         .then(([rows]) => callback(null, Array.isArray(rows) ? rows : []))
-        .catch((err) => callback(err));
+        .catch((err) => {
+          if (demoFallbackEnabled()) return callback(null, []);
+          callback(err);
+        });
       return adapter;
     },
     close(cb) {
@@ -200,14 +311,27 @@ function createPostgresAdapter() {
   const dbUrlRaw = readEnv("DATABASE_URL");
   const dbHost = readEnv("DB_HOST");
   const isSupabase = /supabase\.com/i.test(dbUrlRaw) || /supabase\.com/i.test(dbHost);
+  const urlSslMode = (() => {
+    try {
+      if (!dbUrlRaw) return "";
+      return new URL(dbUrlRaw).searchParams.get("sslmode") || "";
+    } catch {
+      return "";
+    }
+  })().toLowerCase();
   const sslEnabled =
     readEnv("DB_SSL").toLowerCase() === "true" ||
     /sslmode=require/i.test(dbUrlRaw) ||
-    isSupabase;
+    isSupabase ||
+    urlSslMode === "require" ||
+    urlSslMode === "verify-ca" ||
+    urlSslMode === "verify-full" ||
+    urlSslMode === "no-verify";
   const rejectUnauthorizedEnv = readEnv("DB_SSL_REJECT_UNAUTHORIZED").toLowerCase();
+  const urlNoVerify = urlSslMode === "no-verify";
   const rejectUnauthorized = rejectUnauthorizedEnv
     ? rejectUnauthorizedEnv !== "false"
-    : false;
+    : !urlNoVerify;
   const ssl = sslEnabled ? { rejectUnauthorized } : undefined;
   const baseConfig = {
     max: Number(readEnv("DB_POOL_SIZE") || 10),
@@ -274,7 +398,10 @@ function createPostgresAdapter() {
           };
           callback.call(ctx, null);
         })
-        .catch((err) => callback(err));
+        .catch((err) => {
+          if (demoFallbackEnabled()) return withDemoFallbackRun(callback);
+          callback(err);
+        });
       return adapter;
     },
     get(sql, paramsOrCb, cb) {
@@ -311,7 +438,10 @@ function createPostgresAdapter() {
       const text = toPgPlaceholders(normalized);
       pool.query(text, params)
         .then((result) => callback(null, result.rows && result.rows[0] ? result.rows[0] : undefined))
-        .catch((err) => callback(err));
+        .catch((err) => {
+          if (demoFallbackEnabled()) return callback(null, undefined);
+          callback(err);
+        });
       return adapter;
     },
     all(sql, paramsOrCb, cb) {
@@ -348,7 +478,10 @@ function createPostgresAdapter() {
       const text = toPgPlaceholders(normalized);
       pool.query(text, params)
         .then((result) => callback(null, result.rows || []))
-        .catch((err) => callback(err));
+        .catch((err) => {
+          if (demoFallbackEnabled()) return callback(null, []);
+          callback(err);
+        });
       return adapter;
     },
     close(cb) {
@@ -367,8 +500,19 @@ function createPostgresAdapter() {
 
 function getDB() {
   if (!dbAdapter) {
-    const client = detectClient();
-    dbAdapter = client === "mysql" ? createMySQLAdapter() : createPostgresAdapter();
+    try {
+      const client = detectClient();
+      if (client === "mysql") dbAdapter = createMySQLAdapter();
+      else if (client === "postgres") dbAdapter = createPostgresAdapter();
+      else dbAdapter = createSQLiteAdapter();
+    } catch (err) {
+      if (demoFallbackEnabled()) {
+        console.warn("Primary DB init failed; switching to demo adapter:", err.message);
+        dbAdapter = createDemoAdapter();
+      } else {
+        throw err;
+      }
+    }
   }
   return dbAdapter;
 }
