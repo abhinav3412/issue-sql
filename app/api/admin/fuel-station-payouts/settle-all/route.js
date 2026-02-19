@@ -76,6 +76,38 @@ function ensureFuelStationBankDetailsTable(db) {
   });
 }
 
+async function ensureStationPayoutSchema(db) {
+  await new Promise((resolve) => {
+    db.run(
+      `CREATE TABLE IF NOT EXISTS fuel_station_ledger (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fuel_station_id INTEGER NOT NULL,
+        transaction_type VARCHAR(50) NOT NULL,
+        amount REAL NOT NULL,
+        description TEXT,
+        status VARCHAR(30) DEFAULT 'pending',
+        reference_id VARCHAR(100),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      () => resolve()
+    );
+  });
+
+  const cols = [
+    "transaction_type VARCHAR(50)",
+    "description TEXT",
+    "status VARCHAR(30) DEFAULT 'pending'",
+    "reference_id VARCHAR(100)",
+    "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+  ];
+  for (const col of cols) {
+    await new Promise((resolve) => {
+      db.run(`ALTER TABLE fuel_station_ledger ADD COLUMN ${col}`, () => resolve());
+    });
+  }
+}
+
 async function settleStation(db, station) {
   const fuelStationId = station.id;
   const stationName = station.station_name || `Fuel Station ${fuelStationId}`;
@@ -234,6 +266,7 @@ export async function POST(request) {
 
   try {
     await ensureFuelStationBankDetailsTable(db);
+    await ensureStationPayoutSchema(db);
 
     const body = await request.json().catch(() => ({}));
     const requestedStationId = body?.fuel_station_id ? Number(body.fuel_station_id) : null;

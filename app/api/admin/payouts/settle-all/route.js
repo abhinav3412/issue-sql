@@ -16,6 +16,11 @@ function isValidIfsc(value) {
     return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(value);
 }
 
+function toNumber(value, fallback = 0) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
+
 export async function POST(request) {
     const auth = requireAdmin(request);
     if (!auth) return errorResponse("Unauthorized", 401);
@@ -23,12 +28,41 @@ export async function POST(request) {
     const db = getDB();
     try {
         await new Promise((resolve) => {
+            db.run(`CREATE TABLE IF NOT EXISTS worker_bank_details (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker_id INTEGER NOT NULL UNIQUE,
+                account_holder_name TEXT,
+                account_number TEXT,
+                ifsc_code TEXT,
+                bank_name TEXT,
+                is_bank_verified INTEGER DEFAULT 0,
+                razorpay_contact_id TEXT,
+                razorpay_fund_account_id TEXT,
+                rejection_reason TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`, () => resolve());
+        });
+
+        await new Promise((resolve) => {
             db.run(`CREATE TABLE IF NOT EXISTS worker_payouts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 worker_id INTEGER NOT NULL,
                 amount REAL NOT NULL,
                 reference_id VARCHAR(100),
                 notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (worker_id) REFERENCES workers(id)
+            )`, () => resolve());
+        });
+
+        await new Promise((resolve) => {
+            db.run(`CREATE TABLE IF NOT EXISTS payout_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker_id INTEGER NOT NULL,
+                payout_id VARCHAR(100) NOT NULL,
+                amount REAL NOT NULL,
+                status VARCHAR(50) DEFAULT 'processing',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (worker_id) REFERENCES workers(id)
             )`, () => resolve());
@@ -62,6 +96,13 @@ export async function POST(request) {
 
         for (const worker of eligibleWorkers) {
             try {
+                const pendingBalance = toNumber(worker.pending_balance, 0);
+                if (pendingBalance <= 0) {
+                    results.failed_count++;
+                    results.details.push({ worker_id: worker.id, name: worker.first_name, status: 'failed', error: 'Invalid pending balance' });
+                    continue;
+                }
+
                 let contact_id = worker.razorpay_contact_id;
                 let fund_account_id = worker.razorpay_fund_account_id;
 
@@ -129,7 +170,7 @@ export async function POST(request) {
                 // Step C: Trigger Payout
                 const payout = await createRazorpayPayout({
                     fund_account_id,
-                    amount: worker.pending_balance,
+                    amount: pendingBalance,
                     reference_id: `SETTLE_${worker.id}_${Date.now()}`
                 });
 
@@ -138,11 +179,11 @@ export async function POST(request) {
                     db.serialize(() => {
                         db.run(
                             "INSERT INTO payout_logs (worker_id, payout_id, amount, status) VALUES (?, ?, ?, ?)",
-                            [worker.id, payout.id, worker.pending_balance, payout.status || 'processing']
+                            [worker.id, payout.id, pendingBalance, payout.status || 'processing']
                         );
                         db.run(
                             "INSERT INTO worker_payouts (worker_id, amount, reference_id, notes, created_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                            [worker.id, worker.pending_balance, payout.id, "Admin payout settlement"]
+                            [worker.id, pendingBalance, payout.id, "Admin payout settlement"]
                         );
                         // Move balance to processing (subtract it for now, handle rejection in webhook)
                         db.run("UPDATE workers SET pending_balance = 0, last_payout_at = CURRENT_TIMESTAMP WHERE id = ?", [worker.id]);
@@ -151,7 +192,7 @@ export async function POST(request) {
                 });
 
                 results.success_count++;
-                results.total_amount += worker.pending_balance;
+                results.total_amount += pendingBalance;
                 results.details.push({ worker_id: worker.id, name: worker.first_name, status: 'success', payout_id: payout.id });
 
             } catch (err) {

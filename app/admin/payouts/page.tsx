@@ -38,7 +38,8 @@ export default function AdminPayoutsPage() {
             // but for now we filter and map based on verified status and balance.
             setWorkers(data.map((w: any) => ({
                 ...w,
-                pending_balance: w.pending_balance || 0,
+                pending_balance: Number(w.pending_balance || 0),
+                is_bank_verified: Number(w.is_bank_verified || 0),
                 // We'll fetch verification status in a real implementation or assume it's in the profile
             })));
         } catch (err) {
@@ -177,7 +178,7 @@ export default function AdminPayoutsPage() {
                         </div>
                         <div style={{ textAlign: 'center' }}>
                             <span style={{ fontSize: '0.8rem', color: '#60a5fa' }}>TOTAL AMOUNT</span>
-                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0.25rem 0', color: '#60a5fa' }}>₹{summary.total_amount.toFixed(2)}</p>
+                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: '0.25rem 0', color: '#60a5fa' }}>₹{Number(summary.total_amount || 0).toFixed(2)}</p>
                         </div>
                     </div>
                 </div>

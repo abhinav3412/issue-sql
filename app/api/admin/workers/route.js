@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 const { getDB } = require("../../../../database/db");
-const { requireAdmin, errorResponse } = require("../../../../database/auth-middleware");
+
+function toNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 async function ensureAdminWorkersSchema(db) {
   await new Promise((resolve, reject) => {
@@ -41,7 +45,7 @@ export async function GET() {
     await new Promise((resolve) => {
       db.run("ALTER TABLE service_requests ADD COLUMN review_comment TEXT", (err) => resolve());
     });
-    const workers = await new Promise((resolve, reject) => {
+    const rows = await new Promise((resolve, reject) => {
       db.all(
         `SELECT w.*, 
                 bd.is_bank_verified,
@@ -56,11 +60,20 @@ export async function GET() {
         }
       );
     });
+
+    const workers = (rows || []).map((w) => ({
+      ...w,
+      avg_rating: w.avg_rating == null ? null : toNumber(w.avg_rating, 0),
+      pending_balance: toNumber(w.pending_balance, 0),
+      floater_cash: toNumber(w.floater_cash, 0),
+      is_bank_verified: toNumber(w.is_bank_verified, 0),
+      verified: toNumber(w.verified, 0),
+      status_locked: toNumber(w.status_locked, 0),
+    }));
+
     return NextResponse.json(workers);
   } catch (err) {
     console.error("Admin workers list error:", err);
     return NextResponse.json({ error: "Failed to load workers" }, { status: 500 });
   }
 }
-
-
