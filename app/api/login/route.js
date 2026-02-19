@@ -129,13 +129,13 @@ export async function POST(request) {
 
     const { generateToken } = require("../../../database/auth-middleware");
 
-    // Determine the final role and ID. For Station managers, we use their station ID.
+    // Determine the final role and ID.
     let finalId = user.id;
     let finalRole = isWorker ? "Worker" : (user.role || "User");
 
-    // If not a worker, check if this user is linked to a fuel station
+    // If role explicitly requests Station, map to linked fuel station.
     let stationInfo = null;
-    if (!isWorker) {
+    if (!isWorker && role === "Station") {
       stationInfo = await new Promise((resolve) => {
         db.get(
           "SELECT id, station_name, is_verified, cod_enabled FROM fuel_stations WHERE user_id = ?",

@@ -33,7 +33,7 @@ export default function LoginPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          role: role || "Station",
+          role: role || "User",
           email: form.email,
           password: form.password,
         }),
