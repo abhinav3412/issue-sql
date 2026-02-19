@@ -7,8 +7,8 @@ const { getDB } = require("./db");
 
 const db = getDB();
 
-const ADMIN_EMAIL = "admin@gmail.com";
-const ADMIN_PASSWORD = "admin123";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@gmail.com";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 const HASH_ROUNDS = 10;
 
 function get(sql, params = []) {
