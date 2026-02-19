@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "tsc --noEmit --incremental false",
     "setup": "node database/setup.js && node database/seed-admin.js",
     "cap:sync": "npx cap sync",
     "cap:copy": "npx cap copy",
