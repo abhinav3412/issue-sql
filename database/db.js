@@ -184,8 +184,18 @@ function createMySQLAdapter() {
 
 function createPostgresAdapter() {
   assertDatabaseConfig();
+  const sslEnabled =
+    String(process.env.DB_SSL || "").trim().toLowerCase() === "true" ||
+    /sslmode=require/i.test(String(process.env.DATABASE_URL || ""));
+  const rejectUnauthorized =
+    String(process.env.DB_SSL_REJECT_UNAUTHORIZED || "").trim().toLowerCase() !== "false";
+  const ssl = sslEnabled ? { rejectUnauthorized } : undefined;
+
   const pool = process.env.DATABASE_URL
-    ? new Pool({ connectionString: process.env.DATABASE_URL })
+    ? new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl,
+      })
     : new Pool({
         host: process.env.DB_HOST,
         user: process.env.DB_USER,
@@ -193,6 +203,7 @@ function createPostgresAdapter() {
         database: process.env.DB_NAME,
         port: Number(process.env.DB_PORT || 5432),
         max: Number(process.env.DB_POOL_SIZE || 10),
+        ssl,
       });
   console.log("Connected to PostgreSQL database");
 
