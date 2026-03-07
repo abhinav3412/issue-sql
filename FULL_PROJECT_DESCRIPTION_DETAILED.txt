@@ -1,0 +1,598 @@
+AGF FULL PROJECT DESCRIPTION - DETAILED (ROLE + PAGE + API LOGIC)
+Generated on: 2026-03-02
+Project root: C:\Users\abhin\Desktop\AGF100%\PETROL18_02
+
+======================================================================
+1) SYSTEM OVERVIEW
+======================================================================
+AGF is a full-stack multi-role platform for:
+- emergency roadside support
+- fuel delivery assignment
+- COD/online payments
+- settlements, payouts, and operational controls
+- connectivity telemetry and risk overlays
+
+Role matrix:
+- Public: landing + auth + policy pages
+- User: request creation, payment, tracking, rating
+- Worker: request execution, location updates, earnings, payout visibility
+- Fuel Station: stock, COD settings, settlement visibility, bank details
+- Admin: global controls, monitoring, payouts, pricing, COD governance
+
+Operational style:
+- Next.js App Router monorepo architecture
+- App pages and APIs live in one codebase
+- DB abstraction supports sqlite/mysql/postgres runtime modes
+
+======================================================================
+2) HIGH-LEVEL DOMAIN FLOWS
+======================================================================
+
+A. Authentication and role entry:
+- login/signup/reset flows
+- role-aware dashboard routing
+- token/session persistence on client side
+
+B. Service lifecycle:
+- request creation
+- worker assignment
+- progress transitions
+- completion or cancellation
+- post-completion feedback/rating
+
+C. Fuel assignment lifecycle:
+- candidate station selection by distance
+- stock checks per fuel type
+- COD policy eligibility and fallback rules
+- station + worker context caching
+
+D. Financial lifecycle:
+- estimate calculation
+- online payment create + verify + webhook
+- COD eligibility checks
+- settlement bookkeeping
+- worker and station payout flows
+
+E. Reliability lifecycle:
+- ping and network quality collection
+- weak/no coverage reporting
+- heatmap + zone generation
+- admin visibility overlays
+
+======================================================================
+3) PAGE-LEVEL DETAILED SPEC
+======================================================================
+
+----------------------------------------------------------------------
+A) LANDING / PUBLIC PAGES
+----------------------------------------------------------------------
+
+Route: /
+File: app/page.tsx
+Detailed features:
+- hero CTA path into login/signup
+- role positioning for user/worker/station/admin system
+- primary feature communication blocks
+- links to legal docs and auth pages
+
+Route: /login
+File: app/login/page.tsx
+Detailed features:
+- credential form and validation handling
+- backend login invocation
+- failure state rendering
+- role-aware post-login routing expectations
+- links to signup and forgot-password
+
+Route: /signup
+File: app/signup/page.tsx
+Detailed features:
+- role toggle (User / Worker)
+- first/last name capture
+- email capture
+- country-aware phone input:
+  - country selector dropdown
+  - dial code integration
+  - phone validation hook
+- password + confirm-password matching
+- terms acceptance required before submit
+- submit to /api/signup
+- server error mapping to UI message
+- success redirect to login
+
+Route: /forgot-password
+File: app/forgot-password/page.tsx
+Detailed features:
+- forgot-password initiation form
+- backend token issuance request
+- response messaging state
+
+Route: /reset-password/[token]
+File: app/reset-password/[token]/page.tsx
+Detailed features:
+- token-aware reset page
+- password reset submission and feedback
+
+Route: /terms
+File: app/terms/page.tsx
+- legal content rendering
+
+Route: /privacy
+File: app/privacy/page.tsx
+- legal content rendering
+
+----------------------------------------------------------------------
+B) USER EXPERIENCE PAGES
+----------------------------------------------------------------------
+
+Route: /user
+File: app/user/page.tsx
+Detailed features:
+- request creation panel
+- service type and request details input
+- fuel quantity and service context capture
+- estimate calculation integration
+- payment mode selection (online/COD)
+- COD eligibility checks before allowing COD path
+- request timeline/history rendering
+- request status awareness and transitions in UI
+- cancellation controls in eligible statuses
+- feedback/rating flow after completion
+- worker + station context display where applicable
+
+Financial logic surfaced to user:
+- service price reads
+- fuel price reads
+- estimated split visibility behavior
+- online order creation + verify flow
+
+Map support from user dashboard:
+- location awareness and live user position
+- assigned worker marker visibility
+- connectivity warning banner integration
+
+Supporting component: app/user/UserMap.tsx
+Micro-logic implemented:
+- periodic pull: connectivity zones + heat points
+- periodic network ping with timeout
+- failures counter influencing connectivity severity
+- polygon-distance and heatpoint-distance based warning generation
+- warning threshold distance logic
+- connectivity report anti-spam:
+  - min movement distance gate
+  - cooldown timer gate
+- posts telemetry to /api/connectivity-reports
+- heat layer zoom-radius adaptation
+- race-safe heat redraw guard for dev lifecycle
+
+Supporting component: app/user/LocationConfirmationMap.tsx
+- location confirmation view utilities
+
+Supporting component: app/user/RequestLocationPicker.tsx
+- request location picking behavior
+
+----------------------------------------------------------------------
+C) WORKER EXPERIENCE PAGES
+----------------------------------------------------------------------
+
+Route: /worker
+File: app/worker/page.tsx
+Detailed features:
+- worker operational dashboard
+- open/assigned request visibility
+- acceptance and progression actions
+- status updates and task-state transitions
+- worker location updates
+- completion lifecycle handling
+- earnings/payout awareness blocks
+
+Route: /worker/profile
+File: app/worker/profile/page.tsx
+Detailed features:
+- worker profile data handling
+- bank detail integration
+- profile and account settings interactions
+
+Supporting module: app/worker/FuelStationAssignment.tsx
+Detailed features:
+- assigned fuel station visibility
+- nearest/eligible station context rendering
+- assignment alternatives and metadata display
+
+Supporting hook: app/hooks/useWorkerLocationTracking.ts
+Detailed features:
+- periodic geolocation tracking
+- backend update emission
+- worker operational location synchronization
+
+----------------------------------------------------------------------
+D) ADMIN EXPERIENCE PAGES
+----------------------------------------------------------------------
+
+Route: /admin
+File: app/admin/page.tsx
+Detailed features:
+- high-level KPI and operational cards
+- map intelligence embedding
+- pricing and platform settings integrations
+- payouts and settlement summaries
+- connectivity/failure intelligence overlays
+- activity and trend insights
+
+Shared map engine: app/admin/AdminMap.tsx
+Detailed map logic:
+- geolocation watch/one-shot modes
+- tile mode toggle (street/satellite)
+- recenter control
+- worker/request/station markers
+- custom fuel station marker style
+- fuel station marker visibility threshold by zoom
+- optional station double-click -> Google Maps redirect (toggle)
+- resize/orientation invalidateSize guard
+- popup details for workers and requests
+
+Route: /admin/users
+File: app/admin/users/page.tsx
+Detailed features:
+- user table/listing view
+- user-level management actions
+
+Route: /admin/workers
+File: app/admin/workers/page.tsx
+Detailed features:
+- worker listing and operational status view
+- management actions and filters
+- collect-cash integration
+
+Route: /admin/service-requests
+File: app/admin/service-requests/page.tsx
+Detailed features:
+- service request monitoring and status intelligence
+- stats-driven admin visibility
+
+Route: /admin/fuel-stations
+File: app/admin/fuel-stations/page.tsx
+Detailed features:
+- station listing and management
+- create/edit/delete station actions
+- station controls and COD-related views
+
+Route: /admin/fuel-stations/[id]
+File: app/admin/fuel-stations/[id]/page.tsx
+Detailed features:
+- station details and editable attributes
+- station-level operational context
+
+Route: /admin/payouts
+File: app/admin/payouts/page.tsx
+Detailed features:
+- worker payout operations
+- settle-all batch actions
+
+Route: /admin/fuel-station-payouts
+File: app/admin/fuel-station-payouts/page.tsx
+Detailed features:
+- station payout records
+- settle-all/bulk settlement actions
+
+Route: /admin/cod
+File: app/admin/cod/page.tsx
+Detailed features:
+- global COD settings
+- user-level COD controls
+
+----------------------------------------------------------------------
+E) FUEL STATION EXPERIENCE PAGES
+----------------------------------------------------------------------
+
+Route: /fuel-station
+File: app/fuel-station/page.tsx
+Detailed features:
+- station KPI summary (earnings/pending/stock)
+- verification/COD/open status blocks
+- quick links to stock, earnings, COD settings
+
+Route: /fuel-station/stock
+File: app/fuel-station/stock/page.tsx
+Detailed features:
+- petrol/diesel stock visibility
+- stock update and adjustment actions
+- refill and update timestamps integration
+
+Route: /fuel-station/earnings
+File: app/fuel-station/earnings/page.tsx
+Detailed features:
+- total and pending payout visibility
+- settlement transaction listing
+- bank details read/write integration
+
+Route: /fuel-station/cod-settings
+File: app/fuel-station/cod-settings/page.tsx
+Detailed features:
+- COD enable/disable preferences
+- station-level COD configuration
+
+Route: /fuel-station/transactions
+File: app/fuel-station/transactions/page.tsx
+Detailed features:
+- transaction listing and status presentation
+
+======================================================================
+4) API DOMAIN MAP (DETAILED)
+======================================================================
+
+----------------------------------------------------------------------
+A) AUTH + PASSWORD APIs
+----------------------------------------------------------------------
+
+/api/login (app/api/login/route.js)
+- user/worker/admin style login path
+- role-sensitive identity return
+
+/api/auth/login (app/api/auth/login/route.js)
+- role-aware auth endpoint variant
+
+/api/signup (app/api/signup/route.js)
+- user/worker registration
+- phone normalization and validation by country
+- password hashing
+- duplicate-email detection handling
+
+/api/auth/fuel-station-signup (app/api/auth/fuel-station-signup/route.js)
+- station account registration
+- station profile creation
+- initial petrol/diesel stock bootstrap
+- activity logging
+
+/api/forgot-password (app/api/forgot-password/route.js)
+- reset token generation and persistence
+
+/api/reset-password (app/api/reset-password/route.js)
+- token validation
+- token usage checks
+- expiry checks
+- password update and token consumption
+
+----------------------------------------------------------------------
+B) SERVICE REQUEST + WORKER OPS APIs
+----------------------------------------------------------------------
+
+/api/service-requests (app/api/service-requests/route.js)
+- create request
+- query/filter/list request data
+- update request fields and statuses
+- payment/cod linked request logic
+
+/api/service-requests/[id] (app/api/service-requests/[id]/route.js)
+- id-scoped request patch operations
+
+/api/workers (app/api/workers/route.js)
+- worker listing and worker updates
+- worker location/status update paths
+
+/api/feedback (app/api/feedback/route.js)
+- feedback/rating persistence
+
+/api/worker/bank-details (app/api/worker/bank-details/route.js)
+- worker bank details read/write
+
+----------------------------------------------------------------------
+C) FUEL ASSIGNMENT + STATION APIs
+----------------------------------------------------------------------
+
+/api/assign-fuel-station (app/api/assign-fuel-station/route.js)
+- station assignment decision endpoint
+- distance + stock + COD policy logic
+- alternative station support
+
+/api/fuel-stations (app/api/fuel-stations/route.js)
+- station CRUD endpoint
+- station stock summary join fields
+- dynamic schema compatibility helpers
+
+/api/fuel-station/stock (app/api/fuel-station/stock/route.js)
+- stock retrieval and update operations
+- stock consumption/update logic
+
+/api/fuel-station/earnings (app/api/fuel-station/earnings/route.js)
+- station earnings and transaction feed
+
+/api/fuel-station/cod-settings (app/api/fuel-station/cod-settings/route.js)
+- station COD config reads and updates
+
+/api/fuel-station/bank-details (app/api/fuel-station/bank-details/route.js)
+- station bank details read/write
+
+----------------------------------------------------------------------
+D) PAYMENT + ELIGIBILITY + WEBHOOK APIs
+----------------------------------------------------------------------
+
+/api/payment/calculate (app/api/payment/calculate/route.js)
+- bill and payout split calculations
+
+/api/payment/create-order (app/api/payment/create-order/route.js)
+- Razorpay order creation
+
+/api/payment/verify (app/api/payment/verify/route.js)
+- signature verification endpoint
+
+/api/payment/webhook (app/api/payment/webhook/route.js)
+- async payment event handling
+
+/api/payment/refund (app/api/payment/refund/route.js)
+- refund initiation endpoint
+
+/api/payment/eligibility (app/api/payment/eligibility/route.js)
+- COD/payment eligibility checks
+
+/api/fuel-prices (app/api/fuel-prices/route.ts)
+- fuel rate retrieval adapter endpoint
+
+----------------------------------------------------------------------
+E) ADMIN OPERATIONS APIs
+----------------------------------------------------------------------
+
+Stats + dashboards:
+- /api/admin/stats
+
+Users:
+- /api/admin/users
+- /api/admin/users/[id]
+
+Workers:
+- /api/admin/workers
+- /api/admin/workers/[id]
+- /api/admin/workers/collect-cash
+- /api/admin/workers/[id]/reviews
+- /api/admin/workers/[id]/bank-details
+
+Fuel stations and station payouts:
+- /api/admin/fuel-stations/[id]
+- /api/admin/fuel-station-payouts
+- /api/admin/fuel-station-payouts/settle-all
+
+Worker payouts:
+- /api/admin/payouts/settle-all
+- /api/payouts
+
+Payments and settlements:
+- /api/admin/payments
+- /api/admin/payments/summary
+- /api/admin/settlements
+- /api/admin/settlements/summary
+
+Configuration and policy:
+- /api/admin/service-prices
+- /api/admin/platform-settings
+- /api/admin/cod-settings
+- /api/admin/cod-users
+
+----------------------------------------------------------------------
+F) CONNECTIVITY + OBSERVABILITY APIs
+----------------------------------------------------------------------
+
+/api/ping
+- lightweight reachability probe
+
+/api/connectivity-reports
+- telemetry report ingestion
+
+/api/connectivity-heat
+- aggregated heat points feed
+
+/api/connectivity-zones
+- weak/no-coverage zone feed
+
+----------------------------------------------------------------------
+G) WEBHOOK + PAYOUT ADAPTER APIs
+----------------------------------------------------------------------
+
+/api/webhooks/razorpay-payouts
+- payout webhook status ingestion
+
+======================================================================
+5) DATABASE AND SCRIPT DETAIL
+======================================================================
+
+Core DB modules:
+- database/db.js
+- database/connectivity-db.js
+
+Business logic helpers:
+- database/distance-calculator.js
+- database/fuel-station-selector.js
+- database/settlement-calculator.js
+
+Setup + migration scripts:
+- database/setup.js
+- database/setup-connectivity.js
+- database/migrate-fuel-stations.js
+- database/migrate-fuel-station-stock.js
+- database/migrate-payments-settlement.js
+- database/migrate-service-requests.js
+- database/migrate-worker-payouts.js
+- database/fix_fuel_stations_schema.js
+- database/fix-settlements-schema.js
+- database/seed-admin.js
+
+Major entity groups used by runtime logic:
+- identity: users, workers, password_resets
+- operations: service_requests, activity_log
+- fuel: fuel_stations, fuel_station_stock, fuel_station_ledger
+- finance: payments, settlements, worker_payouts
+- config: service_prices, platform_settings, COD settings tables
+- connectivity: telemetry, heat, zone-related tables in connectivity DB
+
+======================================================================
+6) SMALL FEATURE/LOGIC DETAILS (MICRO-BEHAVIORS)
+======================================================================
+
+- Signup validates country-specific phone structure before DB insert.
+- Duplicate email handling maps DB unique failures to 409 response.
+- Fuel-station signup initializes both petrol and diesel stock rows.
+- Assignment logic considers business policy, not only distance.
+- COD path can be blocked by station trust/limit constraints.
+- Map layer supports street/satellite toggle controls.
+- Fuel station markers are hidden below zoom threshold to reduce clutter.
+- Optional station double-click can open Google Maps directions.
+- User connectivity warning shows weak/no-coverage prediction by distance.
+- Connectivity report posting is throttled by movement + cooldown logic.
+- Heatmap includes zoom-adaptive radius behavior.
+- Dev-safety guard exists for Leaflet heat redraw race scenario.
+- Recenter control returns map to active user/default location.
+
+======================================================================
+7) FRONTEND -> API BINDING SUMMARY
+======================================================================
+
+Primary bindings:
+- app/admin/AdminMap.tsx -> /api/fuel-stations
+- app/admin/cod/page.tsx -> /api/admin/cod-settings, /api/admin/cod-users
+- app/admin/fuel-station-payouts/page.tsx -> /api/fuel-stations, /api/admin/fuel-station-payouts/settle-all
+- app/admin/fuel-stations/page.tsx -> /api/fuel-stations
+- app/admin/page.tsx -> /api/admin/platform-settings, /api/connectivity-heat, /api/connectivity-zones, /api/payouts, /api/admin/service-prices, /api/fuel-prices
+- app/admin/payouts/page.tsx -> /api/admin/workers, /api/admin/payouts/settle-all
+- app/admin/service-requests/page.tsx -> /api/admin/stats
+- app/admin/users/page.tsx -> /api/admin/users
+- app/admin/workers/page.tsx -> /api/admin/workers, /api/admin/workers/collect-cash
+- app/forgot-password/page.tsx -> /api/forgot-password
+- app/fuel-station/cod-settings/page.tsx -> /api/fuel-station/cod-settings
+- app/fuel-station/earnings/page.tsx -> /api/fuel-station/bank-details, /api/fuel-station/earnings
+- app/fuel-station/stock/page.tsx -> /api/fuel-station/stock
+- app/login/page.tsx -> /api/login
+- app/reset-password/[token]/page.tsx -> /api/reset-password
+- app/signup/page.tsx -> /api/signup
+- app/user/page.tsx -> /api/fuel-prices, /api/admin/service-prices, /api/payment/create-order, /api/payment/verify, /api/service-requests, /api/workers, /api/fuel-stations, /api/feedback
+- app/user/UserMap.tsx -> /api/connectivity-zones, /api/connectivity-heat, /api/ping, /api/connectivity-reports
+- app/worker/FuelStationAssignment.tsx -> /api/assign-fuel-station
+- app/worker/page.tsx -> /api/workers, /api/service-requests
+- app/worker/profile/page.tsx -> /api/worker/bank-details, /api/workers
+
+======================================================================
+8) DOCUMENTATION AND SUPPORT FILES
+======================================================================
+
+Related docs:
+- FULL_PROJECT_DESCRIPTION.txt
+- FUEL_STATION_IMPLEMENTATION.md
+- FUEL_STATION_ASSIGNMENT.md
+- PAYMENT_SETTLEMENT_IMPLEMENTATION.md
+- README.md
+
+Config + support:
+- next.config.mjs
+- tsconfig.json
+- app/globals.css
+- public assets
+
+======================================================================
+9) DETAILED CONCLUSION
+======================================================================
+The repository implements a complete multi-role operations system with:
+- role-specific experiences and controls
+- route-level backend orchestration
+- assignment and payment intelligence
+- settlement and payout workflows
+- telemetry-driven reliability overlays
+
+This document is intentionally structured by user journey + backend domain, so implementation behavior can be traced quickly from page to API to data logic.

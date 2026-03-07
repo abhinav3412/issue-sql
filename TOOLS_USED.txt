@@ -1,0 +1,65 @@
+AGF PROJECT - TOOLS USED FOR DEVELOPMENT
+
+Generated: 2026-02-17
+Project: PETROL18_02
+
+1) CORE FRAMEWORKS
+- Next.js (App Router) - full-stack framework
+- React - frontend UI library
+- TypeScript - typed development
+- JavaScript (Node.js runtime) - backend/API and scripts
+
+2) FRONTEND / UI TOOLS
+- Framer Motion - animations
+- Motion - animation utilities
+- Leaflet - map rendering
+- React Leaflet - React bindings for Leaflet
+- Leaflet.heat - heatmap layer on maps
+- Recharts - analytics charts and dashboards
+- CSS (global + component styles)
+
+3) BACKEND / API TOOLS
+- Next.js API Routes (server endpoints)
+- bcryptjs - password hashing
+- nodemailer - email sending (password reset/notifications)
+- crypto (Node built-in) - token/signature/encryption logic
+
+4) PAYMENT / FINTECH TOOLS
+- Razorpay SDK - order/payment/refund/webhook integration
+- RazorpayX API usage pattern - payout/contact/fund account flow
+
+5) DATABASE TOOLS
+- sqlite3 - primary runtime database
+- MySQL schema support (via mysql2 package + schema-mysql.sql)
+- PostgreSQL schema support (via pg package + schema-postgresql.sql)
+- Raw SQL migrations/scripts in database/*.js
+
+6) AUTH / SECURITY TOOLS
+- Custom JWT implementation (HMAC SHA-256 using Node crypto)
+- AES-256-CBC encryption helper (app/utils/encryption.ts)
+- Role-based access patterns (User/Worker/Admin/Fuel_Station)
+
+7) DEV TOOLING
+- npm - package and script runner
+- TypeScript compiler settings (tsconfig.json)
+- ESLint + eslint-config-next (lint dependencies configured)
+- Capacitor (@capacitor/core, @capacitor/cli) - Android/iOS app shell
+- Next dev/build/start scripts
+- Database setup and seed scripts:
+  - node database/setup.js
+  - node database/seed-admin.js
+
+8) PROJECT INFRA SUPPORT
+- Turbopack config in next.config.mjs (dev root handling)
+- Path alias support (@/*) in tsconfig.json
+- Static assets in public/
+
+9) KEY LOCAL SCRIPTED UTILITIES
+- Fuel station selector algorithm module
+- Haversine distance calculator module
+- Settlement calculator module
+- Migration/fix scripts for schema evolution
+- Connectivity telemetry DB setup (separate connectivity.db)
+
+Notes:
+- This list is generated from current project dependencies, config files, and source modules in this repository.
